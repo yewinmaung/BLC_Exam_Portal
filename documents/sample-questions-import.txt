@@ -1,0 +1,17 @@
+[MCQ] What is the capital of France? (2 marks)
+A. London
+B. Paris *
+C. Berlin
+D. Madrid
+
+[TRUE_FALSE] PHP is a server-side language? (1 mark)
+True *
+False
+
+[ESSAY] Explain the water cycle in your own words. (10 marks)
+
+[MCQ] Which are programming languages? (3 marks)
+A. HTML
+B. Python *
+C. CSS
+D. Java *
