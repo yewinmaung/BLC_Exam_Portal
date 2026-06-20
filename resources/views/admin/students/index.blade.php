@@ -7,7 +7,9 @@
         ['label' => 'Students'],
     ]])
 @endsection
-@section('sidebar')@endsection
+@section('sidebar')
+@include('partials.admin-sidebar')
+@endsection
 
 @section('content')
 <div class="page-header">

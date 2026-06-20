@@ -15,7 +15,7 @@
 <div class="col-lg-6">
 
     {{-- SMTP status card --}}
-    <div class="card mb-3">
+    <!-- <div class="card mb-3">
         <div class="card-header" style="font-size:0.82rem"><i class="bi bi-gear me-2"></i>Current SMTP Configuration</div>
         <div class="card-body" style="font-size:0.82rem">
             <table class="table table-sm mb-0">
@@ -29,7 +29,7 @@
                 <i class="bi bi-pencil me-1"></i> Edit SMTP Settings
             </a>
         </div>
-    </div>
+    </div> -->
 
     <div class="card">
         <div class="card-header"><i class="bi bi-send me-2"></i>Send Test Email</div>

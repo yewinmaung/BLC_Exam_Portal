@@ -18,6 +18,7 @@ use App\Http\Controllers\Teacher\ProfileController as TeacherProfileController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', fn () => view('welcome'))->name('home');
+Route::get('certificates/verify/{token}', [\App\Http\Controllers\Admin\CertificateController::class, 'verify'])->name('certificates.verify');
 
 Route::middleware('guest')->group(function () {
     Route::get('login', [AuthController::class, 'showLogin'])->name('login');
@@ -113,6 +114,20 @@ Route::middleware(['auth', 'exam.session'])->group(function () {
         Route::get('students/{student}/edit', [AdminStudentController::class, 'edit'])->name('students.edit');
         Route::put('students/{student}', [AdminStudentController::class, 'update'])->name('students.update');
         Route::delete('students/{student}', [AdminStudentController::class, 'destroy'])->name('students.destroy');
+
+        // ── Results ──
+        Route::get('results', [\App\Http\Controllers\Admin\ResultController::class, 'index'])->name('results.index');
+        Route::get('results/student/{student}', [\App\Http\Controllers\Admin\ResultController::class, 'student'])->name('results.student');
+
+        // ── Transcripts & Certificates ──
+        Route::prefix('academic')->name('academic.')->group(function () {
+            Route::get('transcripts/{student}', [\App\Http\Controllers\Admin\TranscriptController::class, 'show'])->name('transcripts.show');
+            Route::post('transcripts/{student}/generate', [\App\Http\Controllers\Admin\TranscriptController::class, 'generate'])->name('transcripts.generate');
+            Route::get('transcripts/{student}/pdf', [\App\Http\Controllers\Admin\TranscriptController::class, 'pdf'])->name('transcripts.pdf');
+            Route::get('certificates', [\App\Http\Controllers\Admin\CertificateController::class, 'index'])->name('certificates.index');
+            Route::post('certificates/{student}/issue', [\App\Http\Controllers\Admin\CertificateController::class, 'issue'])->name('certificates.issue');
+            Route::get('certificates/{cert}/pdf', [\App\Http\Controllers\Admin\CertificateController::class, 'pdf'])->name('certificates.pdf');
+        });
     });
 
     Route::prefix('teacher')->middleware('role:teacher,admin')->name('teacher.')->group(function () {
@@ -130,6 +145,10 @@ Route::middleware(['auth', 'exam.session'])->group(function () {
         Route::delete('exams/{exam}/questions/{question}', [TeacherExamController::class, 'deleteQuestion'])->name('exams.questions.destroy');
         Route::post('exams/{exam}/submit', [TeacherExamController::class, 'submitForApproval'])->name('exams.submit');
         Route::get('exams/{exam}/results', [TeacherExamController::class, 'results'])->name('exams.results');
+        Route::post('exams/{exam}/import', [TeacherExamController::class, 'importQuestions'])->name('exams.import');
+
+        // ── Result Reports ──
+        Route::get('results', [\App\Http\Controllers\Teacher\ResultController::class, 'index'])->name('results.index');
         Route::get('reattempts', [TeacherExamController::class, 'reattemptRequests'])->name('reattempts.index');
         Route::get('reattempts/create', [TeacherExamController::class, 'reattemptCreate'])->name('reattempts.create');
         Route::post('reattempts', [TeacherExamController::class, 'reattemptStore'])->name('reattempts.store');
@@ -150,5 +169,10 @@ Route::middleware(['auth', 'exam.session'])->group(function () {
         Route::get('reattempts', [\App\Http\Controllers\Student\ReAttemptController::class, 'index'])->name('reattempts.index');
         Route::get('reattempts/create/{exam}', [\App\Http\Controllers\Student\ReAttemptController::class, 'create'])->name('reattempts.create');
         Route::post('reattempts', [\App\Http\Controllers\Student\ReAttemptController::class, 'store'])->name('reattempts.store');
+
+        // ── My Results ──
+        Route::get('results', [\App\Http\Controllers\Student\ResultController::class, 'index'])->name('results.index');
     });
 });
+
+

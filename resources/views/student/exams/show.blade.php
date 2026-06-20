@@ -9,13 +9,7 @@
     ]])
 @endsection
 @section('sidebar')
-<nav class="nav flex-column gap-1">
-    <a class="nav-link" href="{{ route('student.dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard</a>
-    <a class="nav-link" href="{{ route('student.courses.index') }}"><i class="bi bi-book"></i> My Courses</a>
-    <a class="nav-link active" href="{{ route('student.exams.index') }}"><i class="bi bi-pencil-square"></i> Exams</a>
-    <a class="nav-link" href="{{ route('chat.index') }}"><i class="bi bi-chat-dots"></i> Chat</a>
-    <a class="nav-link" href="{{ route('notifications.index') }}"><i class="bi bi-bell"></i> Notifications</a>
-</nav>
+@include('partials.student-sidebar')
 
 @endsection
 
@@ -211,7 +205,7 @@
         <div class="card mb-3">
             <div class="card-body text-center py-4 text-muted">
                 <i class="bi bi-hourglass-bottom d-block mb-2" style="font-size:2rem;opacity:0.4"></i>
-                <div class="small">The exam has ended. Results are being processed.</div>
+                <div class="small">The exam has ended. Results will appear here once published by your teacher.</div>
             </div>
         </div>
         @endif

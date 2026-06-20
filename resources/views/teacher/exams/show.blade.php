@@ -229,6 +229,47 @@
         @endif
     </div>
 
+    {{-- ── Import Questions panel ── --}}
+    @if(in_array($exam->status, ['draft', 'pending_approval']))
+    <div class="col-lg-5 col-12">
+        <div class="card mt-0">
+            <div class="card-header"><i class="bi bi-upload me-2"></i>Import Questions</div>
+            <div class="card-body">
+                <form method="POST" action="{{ route('teacher.exams.import', $exam) }}" enctype="multipart/form-data">
+                    @csrf
+                    <div class="mb-3">
+                        <label class="form-label">Question File <span class="text-danger">*</span></label>
+                        <input type="file" name="import_file" class="form-control"
+                               accept=".txt,.pdf,.doc,.docx" required>
+                        <div class="form-text">Supports: .txt, .pdf, .doc, .docx — Max 5MB</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Category <span class="text-muted fw-normal">(optional)</span></label>
+                        <select name="category_id" class="form-select">
+                            <option value="">— None —</option>
+                            @foreach($categories as $cat)
+                            <option value="{{ $cat->id }}">{{ $cat->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="alert alert-info py-2 mb-3" style="font-size:0.78rem">
+                        <strong>Format:</strong><br>
+                        <code>[MCQ] Question text (2 marks)</code><br>
+                        <code>A. Option 1</code><br>
+                        <code>B. Correct *</code><br><br>
+                        <code>[TRUE_FALSE] Statement (1 mark)</code><br>
+                        <code>True *</code><br>
+                        <code>False</code>
+                    </div>
+                    <button type="submit" class="btn btn-outline-primary w-100">
+                        <i class="bi bi-upload me-1"></i> Import Questions
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    @endif
+
 </div>
 @endsection
 @push('scripts')

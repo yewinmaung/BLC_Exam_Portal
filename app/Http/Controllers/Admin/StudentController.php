@@ -12,12 +12,16 @@ use App\Models\StudentYearRecord;
 use App\Models\User;
 use App\Models\YearLevel;
 use App\Services\ActivityLogService;
+use App\Services\EmailService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 
 class StudentController extends Controller
 {
-    public function __construct(private ActivityLogService $activityLog) {}
+    public function __construct(
+        private ActivityLogService $activityLog,
+        private EmailService $emailService
+    ) {}
 
     public function index()
     {
@@ -96,6 +100,9 @@ class StudentController extends Controller
         }
 
         $this->activityLog->log('student_created', "Created student {$student->email}", $student);
+
+        // Send welcome email
+        $this->emailService->sendWelcomeEmail($student);
 
         return redirect()->route('admin.students.show', $student)
             ->with('success', 'Student created successfully.');

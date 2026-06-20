@@ -91,7 +91,8 @@ class EmailController extends Controller
 
     public function createTemplate()
     {
-        return view('admin.email.templates.create');
+        $template = new EmailTemplate();   // empty model so _form ?? fallbacks work
+        return view('admin.email.templates.create', compact('template'));
     }
 
     public function storeTemplate(Request $request)
@@ -214,13 +215,14 @@ class EmailController extends Controller
             'template_slug' => 'nullable|string|exists:email_templates,slug',
         ]);
 
-        // If a template was chosen, use its rendered content
+        // If a template was chosen, use its RAW subject + body (not rendered).
+        // Per-recipient variable substitution happens inside EmailService::sendBulk()
+        // so each recipient gets their own personalised copy.
         if (!empty($data['template_slug'])) {
             $tmpl = EmailTemplate::findBySlug($data['template_slug']);
             if ($tmpl) {
-                $rendered          = $tmpl->render();
-                $data['subject']   = $rendered['subject'];
-                $data['body_html'] = $rendered['bodyHtml'];
+                $data['subject']   = $tmpl->subject;
+                $data['body_html'] = $tmpl->body_html;
             }
         }
 

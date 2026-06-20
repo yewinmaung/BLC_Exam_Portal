@@ -396,15 +396,15 @@
             <button type="submit" class="btn-submit">Sign In</button>
         </form>
 
-        <div class="register-row">
+        <!-- <div class="register-row">
             Don't have an account?
             <a href="{{ route('register') }}">Create account</a>
-        </div>
+        </div> -->
 
     </div>
 
     {{-- Demo credentials box --}}
-    <div class="demo-creds-box">
+    <!-- <div class="demo-creds-box">
         <div class="demo-creds-title">
             <i class="bi bi-shield-lock-fill"></i>
             Demo Accounts
@@ -439,7 +439,7 @@
                 </button>
             </div>
         </div>
-    </div>
+    </div> -->
 
     <div class="login-footer">
         © {{ date('Y') }} Believe Learning Center. All rights reserved.

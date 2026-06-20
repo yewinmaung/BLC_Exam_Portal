@@ -35,6 +35,12 @@
                 <a href="{{ route('admin.students.edit', $student) }}" class="btn btn-sm btn-primary flex-grow-1">
                     <i class="bi bi-pencil me-1"></i>Edit
                 </a>
+                <a href="{{ route('admin.results.student', $student) }}" class="btn btn-sm btn-outline-primary" title="View Results">
+                    <i class="bi bi-bar-chart-line"></i>
+                </a>
+                <a href="{{ route('admin.academic.transcripts.show', $student) }}" class="btn btn-sm btn-outline-secondary" title="Transcript">
+                    <i class="bi bi-file-earmark-text"></i>
+                </a>
                 <form action="{{ route('admin.students.destroy', $student) }}" method="POST"
                       onsubmit="return confirm('Permanently delete {{ addslashes($student->name) }}?')">
                     @csrf @method('DELETE')

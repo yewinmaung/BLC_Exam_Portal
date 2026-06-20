@@ -60,6 +60,26 @@
         <i class="bi bi-arrow-clockwise"></i> Re-Attempts
     </a>
 
+    {{-- Results --}}
+    <a class="nav-link {{ request()->routeIs('admin.results.*') ? 'active' : '' }}"
+       href="{{ route('admin.results.index') }}">
+        <i class="bi bi-bar-chart-line"></i> Results
+    </a>
+
+    {{-- Transcripts & Certificates --}}
+    <div class="nav-section-label" style="font-size:0.68rem;font-weight:700;color:#9ca3af;padding:0.6rem 0.85rem 0.2rem;text-transform:uppercase;letter-spacing:0.07em">Academic Records</div>
+    <a class="nav-link {{ request()->routeIs('admin.academic.transcripts.*') ? 'active' : '' }}"
+       href="#"
+       onclick="event.preventDefault()"
+       style="cursor:default;opacity:0.6"
+       title="Open a student record to view transcript">
+        <i class="bi bi-file-earmark-text"></i> Transcripts
+    </a>
+    <a class="nav-link {{ request()->routeIs('admin.academic.certificates.*') ? 'active' : '' }}"
+       href="{{ route('admin.academic.certificates.index') }}">
+        <i class="bi bi-award"></i> Certificates
+    </a>
+
     {{-- Chat --}}
     <a class="nav-link {{ request()->routeIs('chat.*') ? 'active' : '' }}"
        href="{{ route('chat.index') }}">
@@ -96,7 +116,7 @@
     </a>
     <a class="nav-link {{ request()->routeIs('admin.email.test*') ? 'active' : '' }}"
        href="{{ route('admin.email.test') }}">
-        <i class="bi bi-send"></i> Test Email
+        <i class="bi bi-send"></i> Individual Email
     </a>
     <a class="nav-link {{ request()->routeIs('admin.email.smtp*') ? 'active' : '' }}"
        href="{{ route('admin.email.smtp') }}">

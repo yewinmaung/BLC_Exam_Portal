@@ -8,14 +8,17 @@ use App\Models\Role;
 use App\Models\User;
 use App\Services\ActivityLogService;
 use App\Support\AcademicYear;
+use App\Services\EmailService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
-    public function __construct(private ActivityLogService $activityLog)
-    {
+    public function __construct(
+        private ActivityLogService $activityLog,
+        private EmailService $emailService
+    ) {
     }
 
     public function index()
@@ -67,6 +70,9 @@ class UserController extends Controller
         ]);
 
         $this->activityLog->log('user_created', "Created user {$user->email}", $user);
+
+        // Send welcome email
+        $this->emailService->sendWelcomeEmail($user);
 
         return redirect()->route('admin.users.index')->with('success', 'User created successfully.');
     }

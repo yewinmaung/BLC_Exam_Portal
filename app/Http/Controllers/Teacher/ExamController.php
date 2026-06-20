@@ -14,16 +14,18 @@ use App\Services\EmailService;
 use App\Services\EncryptionService;
 use App\Services\ExamAccessService;
 use App\Services\NotificationService;
+use App\Services\QuestionImportService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
 class ExamController extends Controller
 {
     public function __construct(
-        private EncryptionService $encryption,
-        private ExamAccessService $examAccess,
-        private NotificationService $notifications,
-        private EmailService $emailService
+        private EncryptionService       $encryption,
+        private ExamAccessService       $examAccess,
+        private NotificationService     $notifications,
+        private EmailService            $emailService,
+        private QuestionImportService   $questionImport
     ) {
     }
 
@@ -277,6 +279,27 @@ class ExamController extends Controller
         $results = $exam->results()->with('student', 'attempt')->latest()->get();
 
         return view('teacher.exams.results', compact('exam', 'results'));
+    }
+
+    // ── Question Import ────────────────────────────────────────────
+
+    public function importQuestions(Request $request, Exam $exam)
+    {
+        $this->authorizeTeacher($exam);
+        $this->ensureEditable($exam);
+
+        $request->validate([
+            'import_file' => 'required|file|mimes:txt,pdf,doc,docx|max:5120',
+            'category_id' => 'nullable|exists:question_categories,id',
+        ]);
+
+        $count = $this->questionImport->importFromFile(
+            $exam,
+            $request->file('import_file'),
+            $request->input('category_id')
+        );
+
+        return back()->with('success', "{$count} question(s) imported successfully.");
     }
 
     // ── Re-attempt request methods ─────────────────────────────

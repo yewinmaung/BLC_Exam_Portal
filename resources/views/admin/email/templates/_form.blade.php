@@ -18,7 +18,7 @@
     <div class="col-sm-8">
         <label class="form-label">Subject <span class="text-danger">*</span></label>
         <input type="text" name="subject" class="form-control @error('subject') is-invalid @enderror"
-               value="{{ old('subject', $template->subject ?? '') }}" placeholder="New Exam: {{exam_name}}" required>
+               value="{{ old('subject', $template->subject ?? '') }}" placeholder="New Exam: @{{exam_name}}" required>
         @error('subject')<div class="invalid-feedback">{{ $message }}</div>@enderror
     </div>
     <div class="col-sm-4">
@@ -32,12 +32,13 @@
         <div class="mb-1 d-flex gap-2 flex-wrap" style="font-size:0.76rem">
             <span class="text-muted">Available variables:</span>
             @foreach(['student_name','student_id','teacher_name','course_name','exam_name','result','gpa'] as $var)
-            <code onclick="insertVar('{{"{{$var}}}"}}')" style="cursor:pointer;background:#ede9fe;color:#3730a3;padding:0.1rem 0.4rem;border-radius:5px" title="Click to insert">{{"{{$var}}"}}</code>
+            @php $varTag = '{{' . $var . '}}'; @endphp
+            <code onclick="insertVar('{{ $varTag }}')" style="cursor:pointer;background:#ede9fe;color:#3730a3;padding:0.1rem 0.4rem;border-radius:5px" title="Click to insert">{{ $varTag }}</code>
             @endforeach
         </div>
         <textarea name="body_html" id="bodyHtml" class="form-control @error('body_html') is-invalid @enderror"
                   rows="14" style="font-family:monospace;font-size:0.82rem" required
-                  placeholder="<h2>Hello {{student_name}},</h2>...">{{ old('body_html', $template->body_html ?? '') }}</textarea>
+                  placeholder="&lt;h2&gt;Hello @{{student_name}},&lt;/h2&gt;...">{{ old('body_html', $template->body_html ?? '') }}</textarea>
         @error('body_html')<div class="invalid-feedback">{{ $message }}</div>@enderror
     </div>
     <div class="col-12">

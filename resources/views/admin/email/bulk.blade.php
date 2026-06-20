@@ -62,12 +62,13 @@
                 <div class="mb-1 d-flex gap-2 flex-wrap" style="font-size:0.75rem">
                     <span class="text-muted">Variables:</span>
                     @foreach(['student_name','teacher_name','course_name','exam_name','result','gpa'] as $v)
-                    <code onclick="insertBulkVar('{{"{{$v}}}"}}')" style="cursor:pointer;background:#ede9fe;color:#3730a3;padding:0.1rem 0.4rem;border-radius:5px" title="Click to insert">{{"{{$v}}"}}</code>
+                    @php $vTag = '{{' . $v . '}}'; @endphp
+                    <code onclick="insertBulkVar('{{ $vTag }}')" style="cursor:pointer;background:#ede9fe;color:#3730a3;padding:0.1rem 0.4rem;border-radius:5px" title="Click to insert">{{ $vTag }}</code>
                     @endforeach
                 </div>
                 <textarea name="body_html" id="bulkBody" class="form-control @error('body_html') is-invalid @enderror"
                           rows="12" style="font-family:monospace;font-size:0.82rem"
-                          required placeholder="<p>Dear {{student_name}},</p>...">{{ old('body_html') }}</textarea>
+                          required placeholder="&lt;p&gt;Dear @{{student_name}},&lt;/p&gt;...">{{ old('body_html') }}</textarea>
                 @error('body_html')<div class="invalid-feedback">{{ $message }}</div>@enderror
             </div>
 

@@ -1,7 +1,7 @@
 @extends('emails.layout')
 @section('subject', 'Exam Pending Approval: '.$exam->title)
 @section('content')
-<h2>📋 New Exam Pending Your Approval</h2>
+<h2>New Exam Pending Your Approval</h2>
 <p>A teacher has submitted an exam for your review and approval.</p>
 
 <div class="info-box">

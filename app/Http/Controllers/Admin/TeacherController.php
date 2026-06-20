@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\Course;
 use App\Services\ActivityLogService;
 use App\Services\CourseAssignmentService;
+use App\Services\EmailService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
@@ -17,7 +18,8 @@ class TeacherController extends Controller
 {
     public function __construct(
         private ActivityLogService $activityLog,
-        private CourseAssignmentService $courseAssignment
+        private CourseAssignmentService $courseAssignment,
+        private EmailService $emailService
     ) {
     }
 
@@ -123,6 +125,9 @@ class TeacherController extends Controller
         }
 
         $this->activityLog->log('teacher_created', "Created teacher {$teacher->email}", $teacher);
+
+        // Send welcome email
+        $this->emailService->sendWelcomeEmail($teacher);
 
         return redirect()->route('admin.teachers.show', $teacher)
             ->with('success', 'Teacher created. You can edit assigned courses below.');

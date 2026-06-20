@@ -97,29 +97,7 @@
             </div>
 
             {{-- ── Course enrollment — dynamically filtered ── --}}
-            <div class="section-box mb-4">
-                <div class="section-title d-flex align-items-center justify-content-between">
-                    <span><i class="bi bi-book me-1"></i> Enroll in Courses</span>
-                    <span class="text-muted fw-normal" style="font-size:0.78rem" id="courseFilterLabel">
-                        Select year level &amp; semester to filter courses
-                    </span>
-                </div>
-
-                {{-- Loading state --}}
-                <div id="courseLoading" style="display:none" class="text-center py-3 text-muted">
-                    <i class="bi bi-arrow-repeat" style="animation:spin 1s linear infinite"></i> Loading courses...
-                </div>
-
-                {{-- Course checklist --}}
-                <div id="courseList" style="max-height:230px;overflow-y:auto;border:1.5px solid var(--border-2,#e4e5f0);border-radius:10px;background:var(--surface,#fff)">
-                    <div class="text-center py-4 text-muted small" id="courseEmpty">
-                        <i class="bi bi-book-half d-block mb-1" style="font-size:1.5rem;opacity:0.35"></i>
-                        Select Academic Year, Year Level, and Semester above to load matching courses.
-                    </div>
-                </div>
-
-                <div class="form-text mt-1">Only courses matching the selected year level and semester are shown.</div>
-            </div>
+            
 
             <div class="d-flex gap-2">
                 <button type="submit" class="btn btn-primary flex-grow-1">

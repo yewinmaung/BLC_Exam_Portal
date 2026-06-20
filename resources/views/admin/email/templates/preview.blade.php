@@ -42,8 +42,9 @@
             <div class="card-body" style="font-size:0.78rem">
                 <div class="text-muted mb-1">These sample values are used in the preview:</div>
                 @foreach(['student_name'=>'John Doe','exam_name'=>'Midterm Exam','course_name'=>'CS101','teacher_name'=>'Prof. Smith','result'=>'Passed','gpa'=>'3.75','student_id'=>'STU-001'] as $k => $v)
+                @php $kDisplay = '{{' . $k . '}}'; @endphp
                 <div class="d-flex justify-content-between border-bottom py-1">
-                    <code style="font-size:0.7rem">{{"{{$k}}"}}</code>
+                    <code style="font-size:0.7rem">{{ $kDisplay }}</code>
                     <span class="text-muted">{{ $v }}</span>
                 </div>
                 @endforeach

@@ -68,7 +68,8 @@
     <div class="card-body">
         <div class="d-flex flex-wrap gap-2" style="font-size:0.78rem">
             @foreach(['student_name','student_id','teacher_name','course_name','exam_name','result','gpa'] as $var)
-            <code style="background:#f1f3f9;padding:0.2rem 0.5rem;border-radius:6px">{{"{{$var}}"}}</code>
+            @php $display = '{{' . $var . '}}'; @endphp
+            <code style="background:#f1f3f9;padding:0.2rem 0.5rem;border-radius:6px">{{ $display }}</code>
             @endforeach
         </div>
     </div>

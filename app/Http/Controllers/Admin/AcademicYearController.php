@@ -8,10 +8,13 @@ use App\Models\AcademicYear;
 use App\Models\StudentYearRecord;
 use App\Models\User;
 use App\Models\YearLevel;
+use App\Services\AcademicService;
 use Illuminate\Http\Request;
 
 class AcademicYearController extends Controller
 {
+    public function __construct(private AcademicService $academicService) {}
+
     /* ── CRUD ─────────────────────────────────────────────────── */
 
     public function index()

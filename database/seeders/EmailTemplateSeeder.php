@@ -77,13 +77,14 @@ HTML,
                 'event'     => 'student_created',
                 'body_html' => <<<HTML
 <h2>👋 Welcome to the University Portal!</h2>
-<p>Dear <strong>{{student_name}}</strong>,</p>
-<p>Your student account has been created successfully. You can now log in and access your courses and exams.</p>
+<p>Dear <strong>{{name}}</strong>,</p>
+<p>Your account has been created successfully. You can now log in and access your courses and exams.</p>
 <div style="background:#f0f4ff;border-left:4px solid #3730a3;padding:14px 18px;margin:20px 0;border-radius:4px">
-    <strong>Student ID:</strong> {{student_id}}<br>
-    <strong>Email:</strong> {{student_name}}
+    <strong>Login Email:</strong> {{email}}<br>
+    <strong>Portal URL:</strong> <a href="{{app_url}}">{{app_url}}</a>
 </div>
-<p>If you have any questions, please contact your institution.</p>
+<p>If you have any questions, please contact your institution's administration.</p>
+<p>Best regards,<br>{{app_name}} Team</p>
 HTML,
                 'is_active' => true,
             ],

@@ -17,6 +17,41 @@ class EmailService
     // ── Public API ────────────────────────────────────────────────────
 
     /**
+     * Send a welcome email to a newly created user.
+     * Falls back to a plain email if the 'welcome' template does not exist.
+     */
+    public function sendWelcomeEmail(User $user): void
+    {
+        try {
+            $vars = $this->resolveUserVars($user);
+
+            // Try template first
+            $sent = $this->sendTemplate(
+                'welcome',
+                $user->email,
+                $user->name,
+                $vars,
+                'welcome',
+                $user->id,
+                true
+            );
+
+            // Fallback: template inactive/missing — send a plain welcome
+            if (!$sent) {
+                $body = view('emails.welcome', ['user' => $user])->render();
+                $this->send(
+                    $user->email, $user->name,
+                    'Welcome to ' . config('app.name') . '!',
+                    $body,
+                    'welcome', null, $user->id, true
+                );
+            }
+        } catch (\Throwable $e) {
+            logger()->error("Welcome email failed for user #{$user->id}: " . $e->getMessage());
+        }
+    }
+
+    /**
      * Send an email immediately (or dispatch to queue).
      * Uses an EmailTemplate slug if provided; otherwise uses raw subject/html.
      */
@@ -85,6 +120,7 @@ class EmailService
 
     /**
      * Bulk send to a recipient group.
+     * Variables like {{student_name}}, {{course_name}} are substituted per recipient.
      */
     public function sendBulk(
         string $recipientGroup,
@@ -98,9 +134,15 @@ class EmailService
 
         foreach ($users as $user) {
             if (!$user->email) continue;
+
+            // Build per-recipient variables and substitute them
+            $vars            = $this->resolveUserVars($user);
+            $personalSubject = $this->substituteVars($subject, $vars);
+            $personalBody    = $this->substituteVars($bodyHtml, $vars);
+
             $this->send(
                 $user->email, $user->name,
-                $subject, $bodyHtml,
+                $personalSubject, $personalBody,
                 $event, $templateSlug,
                 $user->id, true
             );
@@ -186,6 +228,68 @@ class EmailService
             'mail.from.address'            => $settings['from_address'],
             'mail.from.name'               => $settings['from_name'],
         ]);
+    }
+
+    // ── Variable Resolution ──────────────────────────────────────────
+
+    /**
+     * Build the variable map for a given User (student or teacher).
+     * Covers all supported template variables.
+     */
+    public function resolveUserVars(User $user): array
+    {
+        // Base vars available for every user
+        $vars = [
+            'student_name'  => $user->name,
+            'teacher_name'  => $user->name,
+            'name'          => $user->name,        // alias
+            'email'         => $user->email,
+            'student_id'    => 'STU-' . str_pad($user->id, 4, '0', STR_PAD_LEFT),
+            'app_name'      => config('app.name'),
+            'app_url'       => config('app.url'),
+            'year'          => now()->year,
+        ];
+
+        // Student-specific: pull latest active year record for department/major/year-level
+        if ($user->isStudent()) {
+            $record = StudentYearRecord::with(['yearLevel', 'academicYear'])
+                ->where('student_id', $user->id)
+                ->where('status', 'active')
+                ->latest()
+                ->first();
+
+            if ($record) {
+                $vars['year_level']    = $record->yearLevel?->name ?? '';
+                $vars['academic_year'] = $record->academicYear?->name ?? '';
+                $vars['department']    = $record->department ?? '';
+                $vars['major']         = $record->major ?? '';
+                $vars['semester']      = 'Semester ' . ($record->semester ?? '');
+            }
+
+            // Enrolled courses (comma-separated for bulk context)
+            $courseNames = $user->enrollments()
+                ->with('course')
+                ->get()
+                ->pluck('course.title')
+                ->filter()
+                ->implode(', ');
+
+            $vars['course_name']   = $courseNames ?: '';
+            $vars['courses']       = $courseNames ?: '';
+        }
+
+        return $vars;
+    }
+
+    /**
+     * Replace {{variable}} placeholders in a string with actual values.
+     */
+    public function substituteVars(string $text, array $vars): string
+    {
+        foreach ($vars as $key => $value) {
+            $text = str_replace('{{' . $key . '}}', (string) $value, $text);
+        }
+        return $text;
     }
 
     // ── Recipient Resolution ─────────────────────────────────────────

@@ -16,12 +16,12 @@
         <form method="POST" action="{{ route('admin.teachers.store') }}">@csrf
             @include('partials.teacher-form', ['teacher' => new \App\Models\User(), 'isAdminEdit' => false])
             <hr>
-            @include('partials.course-assignment-checkboxes', [
+            <!-- @include('partials.course-assignment-checkboxes', [
                 'courses' => $courses,
                 'assignedCourseIds' => $assignedCourseIds,
                 'label' => 'Assign courses (optional)',
                 'hint' => 'You can also assign courses after creating the teacher.',
-            ])
+            ]) -->
             <button class="btn btn-primary">Create Teacher</button>
         </form>
     </div>

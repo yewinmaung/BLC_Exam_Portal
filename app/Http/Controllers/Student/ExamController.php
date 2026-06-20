@@ -44,8 +44,10 @@ class ExamController extends Controller
             ->with('result')
             ->get();
 
-        // Only show result after schedule ends
-        $result = $scheduleEnded ? $attempts->first()?->result : null;
+        // Only show result after schedule ends AND result has been published
+        $result = ($scheduleEnded && $attempts->first()?->result?->is_published)
+            ? $attempts->first()->result
+            : null;
 
         return view('student.exams.show', compact(
             'exam', 'schedule', 'canTake', 'canViewAnswers',

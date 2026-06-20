@@ -94,6 +94,7 @@
                                         <input type="hidden" name="name"     value="{{ $u->name }}">
                                         <input type="hidden" name="email"    value="{{ $u->email }}">
                                         <input type="hidden" name="role_id"  value="{{ $u->role_id }}">
+                                        <input type="hidden" name="year" value="{{$u->year}}">
                                         <input type="hidden" name="academic_year"  value="{{ $u->academic_year }}">
                                         <input type="hidden" name="is_active" value="1">
                                         <button class="btn btn-sm btn-success" title="Reinstate account">
