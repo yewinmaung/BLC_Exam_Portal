@@ -41,25 +41,38 @@
         <div class="card mb-3">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span><i class="bi bi-book me-1"></i> Assigned Courses</span>
-                <span class="badge bg-primary">{{ count($assignedCourseIds) }} selected</span>
+                <span class="badge" style="background:var(--blc-gold-light,#fef9ec);color:var(--blc-navy,#0b2a5b);font-weight:600">
+                    {{ count($assignedCourseIds) }} course{{ count($assignedCourseIds) !== 1 ? 's' : '' }}
+                </span>
             </div>
             <div class="card-body">
-                <p class="small text-muted">As admin, you can assign or remove courses this teacher is responsible for.</p>
-                @include('partials.assign-courses-form', [
-                    'formAction' => route('admin.teachers.update', $teacher),
-                    'courses' => $courses,
-                    'assignedCourseIds' => $assignedCourseIds,
-                    'label' => 'Courses taught by this teacher',
-                    'hint' => 'Check each course this teacher should teach. A course can only have one teacher.',
-                    'submitLabel' => 'Save Teacher Courses',
-                ])
+                @if(empty($assignedCourseIds))
+                    <p class="text-muted small mb-0">No courses assigned.</p>
+                @else
+                    @php
+                        $assignedCourses = $courses->whereIn('id', $assignedCourseIds)->values();
+                    @endphp
+                    <div class="row g-2" style="max-height:320px;overflow-y:auto">
+                        @foreach($assignedCourses as $course)
+                        <div class="col-md-6">
+                            <div class="border rounded p-2 bg-light d-flex align-items-start gap-2">
+                                <i class="bi bi-book-half text-primary mt-1 flex-shrink-0"></i>
+                                <span class="small">
+                                    <strong>{{ $course->title }}</strong>
+                                    <span class="text-muted">({{ $course->code }})</span>
+                                </span>
+                            </div>
+                        </div>
+                        @endforeach
+                    </div>
+                @endif
             </div>
         </div>
 
         <div class="card">
             <div class="card-header">Recent Exams</div>
             <div class="card-body p-0">
-                <table class="table datatable mb-0">
+                <table class="table mb-0">
                     <thead><tr><th>Title</th><th>Course</th><th>Status</th></tr></thead>
                     <tbody>
                         @forelse($teacher->examsAsTeacher as $exam)

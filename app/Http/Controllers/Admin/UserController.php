@@ -21,11 +21,27 @@ class UserController extends Controller
     ) {
     }
 
-    public function index()
+    public function index(Request $request)
     {
-        $users = User::with('role')->latest()->paginate(15);
+        $search  = $request->string('search')->trim()->limit(100)->value();
+        $roleId  = $request->filled('role_id') ? (int) $request->role_id : null;
+        $status  = $request->filled('status') ? $request->status : null;
 
-        return view('admin.users.index', compact('users'));
+        $roles = Role::orderBy('name')->get();
+
+        $users = User::with('role')
+            ->when($search, fn ($q) =>
+                $q->where('name',  'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%")
+            )
+            ->when($roleId, fn ($q) => $q->where('role_id', $roleId))
+            ->when($status === 'active',   fn ($q) => $q->where('is_active', true))
+            ->when($status === 'inactive', fn ($q) => $q->where('is_active', false))
+            ->latest()
+            ->paginate(15)
+            ->withQueryString();
+
+        return view('admin.users.index', compact('users', 'roles'));
     }
 
     public function create()

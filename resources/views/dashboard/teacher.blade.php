@@ -8,15 +8,8 @@
     ]])
 @endsection
 @section('sidebar')
-<nav class="nav flex-column gap-1">
-    <a class="nav-link {{ request()->routeIs('teacher.dashboard') ? 'active' : '' }}" href="{{ route('teacher.dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard</a>
-    <a class="nav-link {{ request()->routeIs('teacher.profile.*') ? 'active' : '' }}" href="{{ route('teacher.profile.show') }}"><i class="bi bi-person-badge"></i> My Profile</a>
-    <a class="nav-link {{ request()->routeIs('teacher.exams.index') || request()->routeIs('teacher.exams.show') ? 'active' : '' }}" href="{{ route('teacher.exams.index') }}"><i class="bi bi-file-earmark-text"></i> My Exams</a>
-    <a class="nav-link {{ request()->routeIs('teacher.exams.create') ? 'active' : '' }}" href="{{ route('teacher.exams.create') }}"><i class="bi bi-plus-circle"></i> Create Exam</a>
-    <a class="nav-link {{ request()->routeIs('teacher.reattempts.*') ? 'active' : '' }}" href="{{ route('teacher.reattempts.index') }}"><i class="bi bi-arrow-repeat"></i> Re-attempts</a>
-    <a class="nav-link {{ request()->routeIs('chat.*') ? 'active' : '' }}" href="{{ route('chat.index') }}"><i class="bi bi-chat-dots"></i> Chat</a>
-    <a class="nav-link {{ request()->routeIs('notifications.*') ? 'active' : '' }}" href="{{ route('notifications.index') }}"><i class="bi bi-bell"></i> Notifications</a>
-</nav>
+@include('partials.teacher-sidebar')
+
 @endsection
 @section('content')
 <div class="row g-3 mb-4">

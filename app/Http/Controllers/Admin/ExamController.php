@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Course;
 use App\Models\Exam;
 use App\Models\ExamSchedule;
+use App\Models\User;
 use App\Services\ActivityLogService;
 use App\Services\EmailService;
 use App\Services\NotificationService;
@@ -19,11 +21,29 @@ class ExamController extends Controller
     ) {
     }
 
-    public function index()
+    public function index(Request $request)
     {
-        $exams = Exam::with(['course', 'teacher', 'activeSchedule'])->latest()->get();
+        $search   = $request->string('search')->trim()->limit(100)->value();
+        $status   = $request->filled('status') ? $request->status : null;
+        $courseId = $request->filled('course_id') ? (int) $request->course_id : null;
 
-        return view('admin.exams.index', compact('exams'));
+        $courses = Course::where('is_active', true)->orderBy('title')->get(['id', 'title']);
+
+        $exams = Exam::with(['course', 'teacher', 'activeSchedule'])
+            ->when($search, fn ($q) =>
+                $q->where('title', 'like', "%{$search}%")
+            )
+            ->when($status,   fn ($q) => $q->where('status', $status))
+            ->when($courseId, fn ($q) => $q->where('course_id', $courseId))
+            ->latest()
+            ->paginate(10)
+            ->withQueryString();
+
+        // Auto-mark all unread 'exam' category notifications as read
+        // when the user visits this page (badge clears on page load).
+        \App\Models\UserNotification::markCategoryRead(auth()->id(), 'exam');
+
+        return view('admin.exams.index', compact('exams', 'courses'));
     }
 
     public function show(Exam $exam)
@@ -31,6 +51,41 @@ class ExamController extends Controller
         $exam->load(['course', 'teacher', 'questions.answers', 'schedules', 'latestSchedule']);
 
         return view('admin.exams.show', compact('exam'));
+    }
+
+    public function results(Exam $exam)
+    {
+        $exam->load(['course', 'teacher', 'latestSchedule']);
+
+        // Get all results for this exam with student details and attempts
+        $results = \App\Models\Result::with(['student', 'attempt'])
+            ->where('exam_id', $exam->id)
+            ->orderByDesc('percentage')
+            ->get();
+
+        // Get all enrolled students who haven't taken the exam yet
+        $enrolledStudentIds = $exam->course->enrollments()->pluck('student_id');
+        $resultStudentIds = $results->pluck('student_id');
+        
+        $absentStudents = \App\Models\User::whereIn('id', $enrolledStudentIds)
+            ->whereNotIn('id', $resultStudentIds)
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get();
+
+        // Calculate statistics
+        $stats = [
+            'total_enrolled' => $enrolledStudentIds->count(),
+            'total_taken'    => $results->count(),
+            'total_absent'   => $absentStudents->count(),
+            'passed'         => $results->where('is_passed', true)->count(),
+            'failed'         => $results->where('is_passed', false)->count(),
+            'avg_score'      => $results->count() > 0 ? round($results->avg('percentage'), 2) : 0,
+            'highest_score'  => $results->max('percentage') ?? 0,
+            'lowest_score'   => $results->min('percentage') ?? 0,
+        ];
+
+        return view('admin.exams.results', compact('exam', 'results', 'absentStudents', 'stats'));
     }
 
     public function approve(Exam $exam)
@@ -61,6 +116,11 @@ class ExamController extends Controller
 
     public function schedule(Request $request, Exam $exam)
     {
+        // A schedule can only be set once. If one already exists, reject the request.
+        if ($exam->schedules()->exists()) {
+            return back()->withErrors(['error' => 'A schedule has already been set for this exam and cannot be changed.']);
+        }
+
         $data = $request->validate([
             'starts_at'        => 'required|date',
             'ends_at'          => 'required|date|after:starts_at',
@@ -74,41 +134,19 @@ class ExamController extends Controller
             ...$data,
         ]);
 
-        return back()->with('success', 'Exam schedule created.');
+        return back()->with('success', 'Exam schedule set.');
     }
 
     public function updateSchedule(Request $request, Exam $exam, ExamSchedule $schedule)
     {
-        if ($schedule->exam_id !== $exam->id) {
-            abort(404);
-        }
-
-        $data = $request->validate([
-            'starts_at'        => 'required|date',
-            'ends_at'          => 'required|date|after:starts_at',
-            'duration_minutes' => 'required|integer|min:1',
-            'attempt_limit'    => 'required|integer|min:1',
-            'target_year'      => 'nullable|integer|min:1|max:5',
-        ]);
-
-        $schedule->update($data);
-
-        return back()->with('success', 'Schedule updated successfully.');
+        // Schedule is set once and cannot be modified.
+        return back()->withErrors(['error' => 'The exam schedule cannot be changed after it has been set.']);
     }
 
     public function deleteSchedule(Exam $exam, ExamSchedule $schedule)
     {
-        if ($schedule->exam_id !== $exam->id) {
-            abort(404);
-        }
-
-        if ($schedule->is_published) {
-            return back()->withErrors(['error' => 'Cannot delete a published schedule. Close the exam first.']);
-        }
-
-        $schedule->delete();
-
-        return back()->with('success', 'Schedule deleted.');
+        // Schedule is set once and cannot be deleted.
+        return back()->withErrors(['error' => 'The exam schedule cannot be deleted after it has been set.']);
     }
 
     public function publish(Exam $exam)

@@ -47,7 +47,7 @@
         <div class="card">
             <div class="card-header">Recent Exams</div>
             <div class="card-body p-0">
-                <table class="table datatable mb-0">
+                <table class="table mb-0">
                     <thead><tr><th>Exam</th><th>Course</th><th>Status</th></tr></thead>
                     <tbody>
                         @forelse($teacher->examsAsTeacher as $exam)

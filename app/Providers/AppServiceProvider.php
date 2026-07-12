@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Services\EnsureDefaultAdminService;
+use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 
@@ -25,6 +26,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot()
     {
+        // Use custom pagination view across the entire project
+        Paginator::defaultView('pagination.custom');
+
         try {
             if (Schema::hasTable('users')) {
                 app(EnsureDefaultAdminService::class)->run();

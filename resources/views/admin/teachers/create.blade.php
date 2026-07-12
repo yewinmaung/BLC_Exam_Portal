@@ -10,7 +10,8 @@
 @endsection
 @section('sidebar')@include('partials.admin-sidebar')@endsection
 @section('content')
-<div class="card col-lg-7">
+<div class="d-flex justify-content-center">
+    <div class="card col-lg-7">
     <div class="card-header">New Teacher</div>
     <div class="card-body">
         <form method="POST" action="{{ route('admin.teachers.store') }}">@csrf
@@ -25,5 +26,6 @@
             <button class="btn btn-primary">Create Teacher</button>
         </form>
     </div>
+</div>
 </div>
 @endsection

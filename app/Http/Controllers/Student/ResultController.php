@@ -5,16 +5,15 @@ namespace App\Http\Controllers\Student;
 use App\Http\Controllers\Controller;
 use App\Models\AcademicYear;
 use App\Models\Result;
-use App\Services\TranscriptService;
+use App\Services\AcademicService;
 use Illuminate\Http\Request;
 
 class ResultController extends Controller
 {
-    public function __construct(private TranscriptService $transcriptService) {}
+    public function __construct(private AcademicService $academicService) {}
 
     /**
      * Student: own PUBLISHED results only, for exams whose schedule has ENDED.
-     * Results for exams still in-progress (schedule not yet finished) are hidden.
      */
     public function index(Request $request)
     {
@@ -24,7 +23,6 @@ class ResultController extends Controller
         $query = Result::with(['exam.course'])
             ->where('student_id', $studentId)
             ->where('is_published', true)
-            // Only show results for exams whose schedule has already ended
             ->whereHas('exam.schedules', function ($sq) {
                 $sq->where('ends_at', '<=', now());
             })
@@ -47,7 +45,10 @@ class ResultController extends Controller
         }
 
         $results  = $query->paginate(20)->withQueryString();
-        $history  = $this->transcriptService->getHistory(auth()->user());
+        $history  = $this->academicService->getStudentHistory(auth()->user());
+
+        // Mark result notifications as read when student visits My Results
+        \App\Models\UserNotification::markCategoryRead(auth()->id(), 'result');
 
         return view('student.results.index', compact('results', 'academicYears', 'history'));
     }

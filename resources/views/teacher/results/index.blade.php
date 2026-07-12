@@ -75,9 +75,9 @@
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table datatable mb-0" style="font-size:0.84rem">
+            <table class="table mb-0" style="font-size:0.84rem">
                 <thead>
-                    <tr><th>Student</th><th>Exam</th><th>Course</th><th>Score</th><th>%</th><th>Grade</th><th>Status</th><th>Date</th></tr>
+                    <tr><th>Student</th><th>Exam</th><th>Course</th><th>Score</th><th>%</th><th>Status</th><th>Date</th></tr>
                 </thead>
                 <tbody>
                     @forelse($results as $r)
@@ -97,9 +97,10 @@
                                 <span style="font-size:0.78rem">{{ $r->percentage }}%</span>
                             </div>
                         </td>
-                        <td><span class="badge" style="background:var(--royal-light,#ede9fe);color:var(--royal,#3730a3)">{{ $r->grade ?? '—' }}</span></td>
                         <td>
-                            @if($r->is_passed)
+                            @if($r->isDisqualified())
+                                <span class="badge bg-warning text-dark">Failed (Cheating)</span>
+                            @elseif($r->is_passed)
                                 <span class="badge bg-success">Passed</span>
                             @else
                                 <span class="badge bg-danger">Failed</span>

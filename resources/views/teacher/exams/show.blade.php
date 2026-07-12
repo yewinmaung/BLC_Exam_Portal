@@ -9,13 +9,7 @@
     ]])
 @endsection
 @section('sidebar')
-<nav class="nav flex-column gap-1">
-    <a class="nav-link" href="{{ route('teacher.dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard</a>
-    <a class="nav-link active" href="{{ route('teacher.exams.index') }}"><i class="bi bi-file-earmark-text"></i> My Exams</a>
-    <a class="nav-link" href="{{ route('teacher.exams.create') }}"><i class="bi bi-plus-circle"></i> Create Exam</a>
-    <a class="nav-link" href="{{ route('chat.index') }}"><i class="bi bi-chat-dots"></i> Chat</a>
-    <a class="nav-link" href="{{ route('notifications.index') }}"><i class="bi bi-bell"></i> Notifications</a>
-</nav>
+@include('partials.teacher-sidebar')
 
 @endsection
 @section('content')
@@ -27,20 +21,102 @@
             {{ ucfirst(str_replace('_', ' ', $exam->status)) }}
         </span>
         <span class="text-muted small"><i class="bi bi-book me-1"></i>{{ $exam->course->title }}</span>
+        <span class="text-muted small">
+            <i class="bi bi-{{ $exam->shuffle_questions ? 'shuffle' : 'list-ol' }} me-1"></i>
+            Questions: {{ $exam->shuffle_questions ? 'Randomized per student' : 'Fixed order' }}
+        </span>
     </div>
     <div class="d-flex gap-2">
+        @if($exam->status === 'draft' || $exam->status === 'pending_approval')
+        @php
+            $currentMarks  = $exam->questions->sum('marks');
+            $requiredMarks = $exam->total_marks;
+            $marksMatch    = $currentMarks === $requiredMarks;
+            $pct           = $requiredMarks > 0 ? min(100, round($currentMarks / $requiredMarks * 100)) : 0;
+        @endphp
         @if($exam->status === 'draft')
-        <form method="POST" action="{{ route('teacher.exams.submit', $exam) }}">@csrf
-            <button class="btn btn-success">
+        <form method="POST" action="{{ route('teacher.exams.submit', $exam) }}" id="submitForm">
+            @csrf
+            <button id="submitBtn"
+                    class="btn {{ $marksMatch ? 'btn-success' : 'btn-secondary' }}"
+                    {{ $marksMatch ? '' : 'disabled' }}
+                    title="{{ $marksMatch ? 'Submit for Admin Approval' : 'Total question marks must equal ' . $requiredMarks . ' before submitting' }}">
                 <i class="bi bi-send me-1"></i> Submit for Approval
             </button>
         </form>
+        @endif
         @endif
         <a href="{{ route('teacher.exams.results', $exam) }}" class="btn btn-outline-primary">
             <i class="bi bi-bar-chart me-1"></i> Results
         </a>
     </div>
 </div>
+
+{{-- ── Marks Progress Bar ───────────────────────────────────────────────── --}}
+@if(in_array($exam->status, ['draft', 'pending_approval']))
+@php
+    $currentMarks  = $exam->questions->sum('marks');
+    $requiredMarks = $exam->total_marks;
+    $remaining     = max(0, $requiredMarks - $currentMarks);
+    $excess        = max(0, $currentMarks - $requiredMarks);
+    $pct           = $requiredMarks > 0 ? min(100, round($currentMarks / $requiredMarks * 100)) : 0;
+    $marksMatch    = $currentMarks === $requiredMarks;
+    $barColor      = $marksMatch ? '#16a34a' : ($currentMarks > $requiredMarks ? '#dc2626' : '#d97706');
+@endphp
+<div class="card mb-3" id="marksProgressCard">
+    <div class="card-body py-3">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+            {{-- Marks stats --}}
+            <div class="d-flex gap-4 align-items-center flex-wrap">
+                <div>
+                    <div class="text-muted" style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em">Exam Total</div>
+                    <div id="statRequired" style="font-size:1.25rem;font-weight:800;color:var(--blc-navy,#0b2a5b)">{{ $requiredMarks }}</div>
+                </div>
+                <div>
+                    <div class="text-muted" style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em">Current Marks</div>
+                    <div id="statCurrent" style="font-size:1.25rem;font-weight:800;color:{{ $barColor }}">
+                        {{ $currentMarks }} <span style="font-size:0.8rem;font-weight:500;color:#9ca3af">/ {{ $requiredMarks }}</span>
+                    </div>
+                </div>
+                <div>
+                    <div class="text-muted" style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em">
+                        @if($marksMatch) Status @elseif($excess > 0) Excess @else Remaining @endif
+                    </div>
+                    <div id="statRemaining" style="font-size:1.25rem;font-weight:800;color:{{ $barColor }}">
+                        @if($marksMatch)
+                            <i class="bi bi-check-circle-fill text-success"></i> Ready
+                        @elseif($excess > 0)
+                            +{{ $excess }} marks
+                        @else
+                            {{ $remaining }} marks
+                        @endif
+                    </div>
+                </div>
+            </div>
+            {{-- Status badge --}}
+            <div id="marksStatusBadge">
+                @if($marksMatch)
+                <span class="badge" style="background:#dcfce7;color:#166534;font-size:0.8rem;padding:0.4rem 0.85rem">
+                    <i class="bi bi-check2-circle me-1"></i> Marks Complete — Ready to Submit
+                </span>
+                @elseif($excess > 0)
+                <span class="badge" style="background:#fee2e2;color:#991b1b;font-size:0.8rem;padding:0.4rem 0.85rem">
+                    <i class="bi bi-exclamation-triangle-fill me-1"></i> Exceeds total by {{ $excess }} marks
+                </span>
+                @else
+                <span class="badge" style="background:#fef9c3;color:#854d0e;font-size:0.8rem;padding:0.4rem 0.85rem">
+                    <i class="bi bi-hourglass-split me-1"></i> {{ $remaining }} more marks needed
+                </span>
+                @endif
+            </div>
+        </div>
+        {{-- Progress bar --}}
+        <div class="mt-2" style="background:#f0f0f0;border-radius:8px;height:8px;overflow:hidden">
+            <div id="marksProgressFill" style="height:100%;border-radius:8px;transition:width 0.3s,background 0.3s;width:{{ $pct }}%;background:{{ $barColor }}"></div>
+        </div>
+    </div>
+</div>
+@endif
 
 <div class="row g-3">
 
@@ -183,7 +259,7 @@
                         </div>
                     </div>
 
-                    <div class="mb-3">
+                    <!-- <div class="mb-3">
                         <label class="form-label">Category <span class="text-muted fw-normal">(optional)</span></label>
                         <select name="category_id" class="form-select">
                             <option value="">— None —</option>
@@ -191,7 +267,7 @@
                             <option value="{{ $cat->id }}">{{ $cat->name }}</option>
                             @endforeach
                         </select>
-                    </div>
+                    </div> -->
 
                     {{-- MCQ / True-False answers --}}
                     <div id="answersBlock">
@@ -230,7 +306,7 @@
     </div>
 
     {{-- ── Import Questions panel ── --}}
-    @if(in_array($exam->status, ['draft', 'pending_approval']))
+    <!-- @if(in_array($exam->status, ['draft', 'pending_approval']))
     <div class="col-lg-5 col-12">
         <div class="card mt-0">
             <div class="card-header"><i class="bi bi-upload me-2"></i>Import Questions</div>
@@ -268,10 +344,89 @@
             </div>
         </div>
     </div>
-    @endif
+    @endif -->
 
 </div>
 @endsection
 @push('scripts')
 <script src="{{ asset('js/question-builder.js') }}"></script>
+<script>
+// ── Live marks progress update ──────────────────────────────────────────────
+// After any question add/edit/delete the page reloads (full page POST/redirect).
+// This script additionally provides instant client-side feedback while the marks
+// input field is changed BEFORE submitting the form, so the teacher sees the
+// projected total immediately.
+(function () {
+    const REQUIRED = {{ (int) $exam->total_marks }};
+
+    const marksInput    = document.querySelector('input[name="marks"]');
+    const fillEl        = document.getElementById('marksProgressFill');
+    const statCurrent   = document.getElementById('statCurrent');
+    const statRemaining = document.getElementById('statRemaining');
+    const statusBadge   = document.getElementById('marksStatusBadge');
+    const submitBtn     = document.getElementById('submitBtn');
+
+    // Current server-confirmed total from PHP
+    let serverTotal = {{ (int) $exam->questions->sum('marks') }};
+
+    // Projected total (server + value typed in the marks input but not yet saved)
+    function projected() {
+        const newMark = marksInput ? (parseInt(marksInput.value, 10) || 0) : 0;
+        return serverTotal + newMark;
+    }
+
+    function update(total) {
+        if (!fillEl) return;
+
+        const pct      = REQUIRED > 0 ? Math.min(100, Math.round(total / REQUIRED * 100)) : 0;
+        const remaining = Math.max(0, REQUIRED - total);
+        const excess    = Math.max(0, total - REQUIRED);
+        const match     = total === REQUIRED;
+        const color     = match ? '#16a34a' : (total > REQUIRED ? '#dc2626' : '#d97706');
+
+        fillEl.style.width      = pct + '%';
+        fillEl.style.background = color;
+
+        if (statCurrent) {
+            statCurrent.style.color = color;
+            statCurrent.innerHTML = total + ' <span style="font-size:0.8rem;font-weight:500;color:#9ca3af">/ ' + REQUIRED + '</span>';
+        }
+
+        if (statRemaining) {
+            statRemaining.style.color = color;
+            if (match)       statRemaining.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i> Ready';
+            else if (excess) statRemaining.textContent = '+' + excess + ' marks';
+            else             statRemaining.textContent = remaining + ' marks';
+        }
+
+        if (statusBadge) {
+            if (match) {
+                statusBadge.innerHTML = '<span class="badge" style="background:#dcfce7;color:#166534;font-size:0.8rem;padding:0.4rem 0.85rem"><i class="bi bi-check2-circle me-1"></i> Marks Complete — Ready to Submit</span>';
+            } else if (excess) {
+                statusBadge.innerHTML = '<span class="badge" style="background:#fee2e2;color:#991b1b;font-size:0.8rem;padding:0.4rem 0.85rem"><i class="bi bi-exclamation-triangle-fill me-1"></i> Exceeds total by ' + excess + ' marks</span>';
+            } else {
+                statusBadge.innerHTML = '<span class="badge" style="background:#fef9c3;color:#854d0e;font-size:0.8rem;padding:0.4rem 0.85rem"><i class="bi bi-hourglass-split me-1"></i> ' + remaining + ' more marks needed</span>';
+            }
+        }
+
+        if (submitBtn) {
+            const serverMatch = serverTotal === REQUIRED;
+            submitBtn.disabled = !serverMatch;
+            submitBtn.className = 'btn ' + (serverMatch ? 'btn-success' : 'btn-secondary');
+            submitBtn.title = serverMatch
+                ? 'Submit for Admin Approval'
+                : 'Total question marks must equal ' + REQUIRED + ' before submitting';
+        }
+    }
+
+    // React to marks input change (preview only — server total unchanged until saved)
+    if (marksInput) {
+        marksInput.addEventListener('input', () => update(projected()));
+        marksInput.addEventListener('change', () => update(projected()));
+    }
+
+    // Initial render
+    update(serverTotal);
+})();
+</script>
 @endpush

@@ -22,9 +22,7 @@
     <div class="card-header"><i class="bi bi-file-earmark-code me-2"></i>Email Templates</div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table datatable mb-0">
-                <thead>
-                    <tr><th>Name</th><th>Slug</th><th>Event</th><th>Subject</th><th>Status</th><th>Actions</th></tr>
+            <table class="table mb-0">
                 </thead>
                 <tbody>
                     @forelse($templates as $t)

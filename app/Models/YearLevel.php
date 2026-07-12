@@ -18,8 +18,17 @@ class YearLevel extends Model
         5 => 'Final Year',
     ];
 
+    /** Seed default year levels when the table is empty (e.g. migrations without seeder). */
+    public static function ensureDefaults(): void
+    {
+        if (static::exists()) {
+            return;
+        }
+
+        foreach (static::$names as $level => $name) {
+            static::firstOrCreate(['level' => $level], ['name' => $name]);
+        }
+    }
+
     public function studentYearRecords(): HasMany { return $this->hasMany(StudentYearRecord::class); }
-    public function yearlyExamResults(): HasMany  { return $this->hasMany(YearlyExamResult::class); }
-    public function promotionHistoriesFrom(): HasMany { return $this->hasMany(PromotionHistory::class, 'from_year_level_id'); }
-    public function promotionHistoriesTo(): HasMany   { return $this->hasMany(PromotionHistory::class, 'to_year_level_id'); }
 }

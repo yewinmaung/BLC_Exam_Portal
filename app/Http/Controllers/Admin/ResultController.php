@@ -74,6 +74,9 @@ class ResultController extends Controller
 
         $results  = $query->paginate(25)->withQueryString();
 
+        // Auto-mark all unread 'result' category notifications as read on page visit
+        \App\Models\UserNotification::markCategoryRead(auth()->id(), 'result');
+
         return view('admin.results.index', compact(
             'results', 'academicYears', 'yearLevels', 'courses', 'students', 'stats'
         ));

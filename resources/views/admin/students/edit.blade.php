@@ -18,7 +18,8 @@
     <div class="card-header"><i class="bi bi-pencil me-2"></i>Edit — {{ $student->name }}</div>
     <div class="card-body">
         <form method="POST" action="{{ route('admin.students.update', $student) }}">
-            @csrf @method('PUT')
+            @csrf
+             @method('PUT')
 
             <div class="card mb-3" style="border:1px solid var(--border-2,#e4e5f0)!important;box-shadow:none!important">
                 <div class="card-header" style="font-size:0.82rem;font-weight:700">
@@ -76,10 +77,11 @@
                         </div>
                         <div class="col-sm-6">
                             <label class="form-label">Year Level</label>
-                            <select name="year_level_id" class="form-select">
+                            <select name="year_level_id" id="sel_year_level" class="form-select">
                                 <option value="">—</option>
                                 @foreach($yearLevels as $yl)
                                 <option value="{{ $yl->id }}"
+                                    data-level="{{ $yl->level }}"
                                     {{ old('year_level_id', $currentRecord?->year_level_id) == $yl->id ? 'selected' : '' }}>
                                     {{ $yl->name }}
                                 </option>
@@ -98,10 +100,23 @@
                             <input type="text" name="department" class="form-control"
                                    value="{{ old('department', $currentRecord?->department) }}">
                         </div>
-                        <div class="col-sm-4">
-                            <label class="form-label">Major</label>
-                            <input type="text" name="major" class="form-control"
-                                   value="{{ old('major', $currentRecord?->major) }}">
+                        <div class="col-sm-4" id="majorWrapper">
+                            <label class="form-label">
+                                Major
+                                <span class="text-danger" id="majorRequired" style="display:none">*</span>
+                                <span class="text-muted fw-normal" id="majorOptional" style="font-size:0.8rem">(Year 1 — not required)</span>
+                            </label>
+                            <select name="major_id" id="sel_major" class="form-select @error('major_id') is-invalid @enderror">
+                                <option value="">— No Major (Year 1) —</option>
+                                @foreach($majors as $m)
+                                <option value="{{ $m->id }}"
+                                    data-code="{{ $m->code }}"
+                                    {{ old('major_id', $currentMajorId) == $m->id ? 'selected' : '' }}>
+                                    {{ $m->code }}
+                                </option>
+                                @endforeach
+                            </select>
+                            @error('major_id')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
                         </div>
                     </div>
                 </div>
@@ -140,3 +155,70 @@
 </div>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+(function () {
+    const selYearLevel = document.getElementById('sel_year_level');
+    const majorSel     = document.getElementById('sel_major');
+    const reqBadge     = document.getElementById('majorRequired');
+    const optNote      = document.getElementById('majorOptional');
+
+    if (!selYearLevel || !majorSel) return;
+
+    // Store all major options for show/hide
+    const allMajorOptions = Array.from(majorSel.options);
+
+    function toggleMajor() {
+        const opt   = selYearLevel.options[selYearLevel.selectedIndex];
+        const level = opt ? parseInt(opt.dataset.level || '0', 10) : 0;
+
+        // Store currently selected value
+        const currentValue = majorSel.value;
+
+        // Clear current options except the first "No Major" option
+        while (majorSel.options.length > 1) {
+            majorSel.remove(1);
+        }
+
+        // Filter and add back appropriate major options
+        allMajorOptions.forEach((option, index) => {
+            if (index === 0) return; // Skip "No Major" option
+
+            const code = option.dataset.code || '';
+            
+            // For Year 1: Show ONLY CST
+            if (level === 1) {
+                if (code === 'CST') {
+                    majorSel.add(option.cloneNode(true));
+                }
+            } 
+            // For Year 2+: Show CS, CT, and other majors (hide CST)
+            else if (level >= 2) {
+                if (code !== 'CST') {
+                    majorSel.add(option.cloneNode(true));
+                }
+            }
+        });
+
+        // Restore selection if still available
+        majorSel.value = currentValue;
+
+        // Update required field and display
+        if (level >= 2) {
+            majorSel.required = true;
+            reqBadge.style.display = 'inline';
+            optNote.style.display  = 'none';
+        } else {
+            majorSel.required = false;
+            if (level < 2) majorSel.value = '';
+            reqBadge.style.display = 'none';
+            optNote.style.display  = 'inline';
+        }
+    }
+
+    selYearLevel.addEventListener('change', toggleMajor);
+    toggleMajor();
+})();
+</script>
+@endpush

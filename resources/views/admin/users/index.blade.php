@@ -11,16 +11,16 @@
 @section('content')
 <div class="page-header">
     <div></div>
-    <a href="{{ route('admin.users.create') }}" class="btn btn-primary">
+    <!-- <a href="{{ route('admin.users.create') }}" class="btn btn-primary">
         <i class="bi bi-person-plus me-1"></i> Add User
-    </a>
+    </a> -->
 </div>
 
 <div class="card">
     <div class="card-header"><i class="bi bi-people me-2"></i>All Users</div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table datatable mb-0">
+            <table class="table mb-0">
                 <thead>
                     <tr>
                         <th>Name</th>
@@ -65,21 +65,18 @@
                         <td>
                             <div class="d-flex gap-1 flex-wrap">
                                 @if($u->isTeacher())
-                                <a href="{{ route('admin.teachers.show', $u) }}" class="btn btn-sm btn-outline-info" title="Teacher profile">
+                                <a href="{{ route('admin.teachers.show', $u) }}" class="btn btn-sm btn-outline-info" title="View teacher profile">
                                     <i class="bi bi-eye"></i>
                                 </a>
                                 @endif
                                 @if($u->isStudent())
-                                <a href="{{ route('admin.students.show', $u) }}" class="btn btn-sm btn-outline-info" title="Student courses">
+                                <a href="{{ route('admin.students.show', $u) }}" class="btn btn-sm btn-outline-info" title="View student profile">
                                     <i class="bi bi-eye"></i>
                                 </a>
                                 @endif
-                                <a href="{{ route('admin.users.edit', $u) }}" class="btn btn-sm btn-outline-primary" title="Edit">
-                                    <i class="bi bi-pencil"></i>
-                                </a>
 
                                 @if($u->id !== auth()->id())
-                                    {{-- Terminate / Reinstate --}}
+                                    {{-- Suspend / Reinstate --}}
                                     @if($u->is_active)
                                     <form action="{{ route('admin.users.terminate', $u) }}" method="POST" class="d-inline"
                                           onsubmit="return confirm('Suspend {{ addslashes($u->name) }}? They will be logged out and notified by email.')">
@@ -91,12 +88,11 @@
                                     @else
                                     <form action="{{ route('admin.users.update', $u) }}" method="POST" class="d-inline">
                                         @csrf @method('PUT')
-                                        <input type="hidden" name="name"     value="{{ $u->name }}">
-                                        <input type="hidden" name="email"    value="{{ $u->email }}">
-                                        <input type="hidden" name="role_id"  value="{{ $u->role_id }}">
-                                        <input type="hidden" name="year" value="{{$u->year}}">
-                                        <input type="hidden" name="academic_year"  value="{{ $u->academic_year }}">
-                                        <input type="hidden" name="is_active" value="1">
+                                        <input type="hidden" name="name"          value="{{ $u->name }}">
+                                        <input type="hidden" name="email"         value="{{ $u->email }}">
+                                        <input type="hidden" name="role_id"       value="{{ $u->role_id }}">
+                                        <input type="hidden" name="academic_year" value="{{ $u->academic_year }}">
+                                        <input type="hidden" name="is_active"     value="1">
                                         <button class="btn btn-sm btn-success" title="Reinstate account">
                                             <i class="bi bi-check-circle"></i>
                                         </button>
@@ -120,7 +116,12 @@
             </table>
         </div>
         @if($users->hasPages())
-        <div class="p-3 border-top">{{ $users->links() }}</div>
+        <div class="p-3 border-top d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <span class="text-muted" style="font-size:0.8rem">
+                Showing {{ $users->firstItem() }} to {{ $users->lastItem() }} of {{ $users->total() }} entries
+            </span>
+            {{ $users->links() }}
+        </div>
         @endif
     </div>
 </div>

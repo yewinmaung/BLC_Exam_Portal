@@ -42,6 +42,9 @@ class ReAttemptController extends Controller
         $exams     = Exam::orderBy('title')->get();
         $courses   = \App\Models\Course::orderBy('title')->get();
 
+        // Auto-mark all unread 're-attempt' notifications as read on page visit
+        \App\Models\UserNotification::markCategoryRead(auth()->id(), 'reattempt');
+
         return view('admin.reattempts.index', compact('requests', 'students', 'teachers', 'exams', 'courses'));
     }
 

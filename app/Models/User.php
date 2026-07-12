@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Models\StudentYearRecord;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -67,14 +68,9 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(UserNotification::class);
     }
 
-    public function sentMessages(): HasMany
+    public function studentYearRecords(): HasMany
     {
-        return $this->hasMany(ChatMessage::class, 'sender_id');
-    }
-
-    public function receivedMessages(): HasMany
-    {
-        return $this->hasMany(ChatMessage::class, 'receiver_id');
+        return $this->hasMany(StudentYearRecord::class, 'student_id');
     }
 
     public function isAdmin(): bool

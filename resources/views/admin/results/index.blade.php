@@ -107,7 +107,7 @@
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table datatable mb-0" style="font-size:0.84rem">
+            <table class="table mb-0" style="font-size:0.84rem">
                 <thead>
                     <tr>
                         <th>Student</th>
@@ -146,7 +146,20 @@
                             <span class="badge" style="background:var(--royal-light,#ede9fe);color:var(--royal,#3730a3)">{{ $r->grade ?? '—' }}</span>
                         </td>
                         <td>
-                            @if($r->is_passed)
+                            @if($r->isDisqualified())
+                                <div class="d-flex align-items-center gap-1">
+                                    <span class="badge" style="background:#fef3c7;color:#92400e">
+                                        Failed (Cheating)
+                                    </span>
+                                    @if($r->violation_reason)
+                                    <button class="btn btn-xs btn-outline-warning" 
+                                            data-bs-toggle="tooltip" 
+                                            title="{{ $r->violation_reason }}">
+                                        <i class="bi bi-info-circle"></i>
+                                    </button>
+                                    @endif
+                                </div>
+                            @elseif($r->is_passed)
                                 <span class="badge bg-success">Passed</span>
                             @else
                                 <span class="badge bg-danger">Failed</span>
@@ -172,8 +185,25 @@
             </table>
         </div>
         @if($results->hasPages())
-        <div class="p-3 border-top">{{ $results->links() }}</div>
+        <div class="p-3 border-top d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <span class="text-muted" style="font-size:0.8rem">
+                Showing {{ $results->firstItem() }} to {{ $results->lastItem() }} of {{ $results->total() }} entries
+            </span>
+            {{ $results->links() }}
+        </div>
         @endif
     </div>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+// Initialize Bootstrap tooltips
+document.addEventListener('DOMContentLoaded', function() {
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+});
+</script>
+@endpush

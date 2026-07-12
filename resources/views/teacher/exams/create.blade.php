@@ -57,6 +57,31 @@
                         </div>
                     </div>
 
+                    {{-- Question Order Randomization --}}
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">Question Order Randomization</label>
+                        <div class="d-flex gap-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="shuffle_questions"
+                                       id="shuffleDisabled" value="0"
+                                       {{ old('shuffle_questions', '0') == '0' ? 'checked' : '' }}>
+                                <label class="form-check-label" for="shuffleDisabled">
+                                    <strong>Disabled</strong>
+                                    <div class="text-muted" style="font-size:0.78rem">Every student sees questions in teacher-defined order</div>
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="shuffle_questions"
+                                       id="shuffleEnabled" value="1"
+                                       {{ old('shuffle_questions') == '1' ? 'checked' : '' }}>
+                                <label class="form-check-label" for="shuffleEnabled">
+                                    <strong>Enabled</strong>
+                                    <div class="text-muted" style="font-size:0.78rem">Each student receives questions in a unique random order</div>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="d-flex gap-2">
                         <button type="submit" class="btn btn-primary flex-grow-1">
                             <i class="bi bi-arrow-right-circle me-1"></i> Create & Add Questions

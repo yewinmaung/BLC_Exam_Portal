@@ -4,7 +4,6 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class StudentYearRecord extends Model
 {
@@ -17,7 +16,4 @@ class StudentYearRecord extends Model
     public function student(): BelongsTo      { return $this->belongsTo(User::class, 'student_id'); }
     public function academicYear(): BelongsTo { return $this->belongsTo(AcademicYear::class); }
     public function yearLevel(): BelongsTo    { return $this->belongsTo(YearLevel::class); }
-    public function yearlyResults(): HasMany  { return $this->hasMany(YearlyExamResult::class, 'student_id', 'student_id')
-        ->where('academic_year_id', $this->academic_year_id)
-        ->where('year_level_id', $this->year_level_id); }
 }

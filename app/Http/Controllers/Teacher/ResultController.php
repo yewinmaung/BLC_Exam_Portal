@@ -64,6 +64,9 @@ class ResultController extends Controller
 
         $results = $query->paginate(25)->withQueryString();
 
+        // Mark result notifications as read when teacher opens Results page
+        \App\Models\UserNotification::markCategoryRead(auth()->id(), 'result');
+
         return view('teacher.results.index', compact(
             'results', 'academicYears', 'yearLevels', 'courses'
         ));

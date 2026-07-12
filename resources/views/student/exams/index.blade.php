@@ -13,15 +13,35 @@
 @endsection
 
 @section('content')
+@if(isset($securityTerminatedAttempts) && $securityTerminatedAttempts->isNotEmpty())
+    @foreach($securityTerminatedAttempts as $terminatedAttempt)
+        @php
+            $lastViolation = $terminatedAttempt->cheatingLogs->sortByDesc('warning_number')->first();
+            $reason = $lastViolation?->details
+                ?: ($lastViolation ? str_replace('_', ' ', ucfirst($lastViolation->violation_type)) : 'Repeated security violations');
+        @endphp
+        <div class="alert alert-danger d-flex align-items-start gap-2 mb-3" role="alert">
+            <i class="bi bi-exclamation-octagon-fill flex-shrink-0 mt-1"></i>
+            <div>
+                <strong>Exam Terminated — Result Invalidated</strong><br>
+                <span class="small">
+                    <strong>{{ $terminatedAttempt->exam->title ?? 'Exam' }}</strong>:
+                    Your exam was terminated due to security violations.
+                    Reason: {{ $reason }}.
+                    Your result has been invalidated and your session is locked pending review.
+                </span>
+            </div>
+        </div>
+    @endforeach
+@endif
+
 <div class="row g-3">
     @forelse($exams as $e)
     <div class="col-md-6 col-xl-4">
         <div class="card h-100" style="transition:transform 0.2s,box-shadow 0.2s" onmouseover="this.style.transform='translateY(-4px)'" onmouseout="this.style.transform=''">
             <div class="card-body d-flex flex-column">
                 <div class="d-flex align-items-start justify-content-between mb-2">
-                    <span class="status-pill {{ $e->status === 'approved' ? 'status-approved' : 'status-published' }}">
-                        {{ $e->status === 'approved' ? 'Ready' : 'Published' }}
-                    </span>
+                    <span class="status-pill status-published">Published</span>
                     @if($e->activeSchedule)
                     <span class="text-muted small"><i class="bi bi-clock me-1"></i>{{ $e->activeSchedule->duration_minutes }}min</span>
                     @endif

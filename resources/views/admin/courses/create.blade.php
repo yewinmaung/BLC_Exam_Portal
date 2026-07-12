@@ -12,78 +12,116 @@
 
 @section('content')
 <div class="row justify-content-center">
-<div class="col-lg-7">
+<div class="col-lg-8">
 <div class="card">
     <div class="card-header"><i class="bi bi-plus-circle me-2"></i>New Course</div>
     <div class="card-body">
-        <form method="POST" action="{{ route('admin.courses.store') }}">@csrf
+        <form method="POST" action="{{ route('admin.courses.store') }}" id="courseForm">
+            @csrf
 
-            <div class="mb-3">
-                <label class="form-label">Title <span class="text-danger">*</span></label>
-                <input type="text" name="title" class="form-control"
-                       value="{{ old('title') }}" required>
+            {{-- ── Basic Info ── --}}
+            <div class="card mb-3" style="border:1px solid var(--border-2,#e4e5f0)!important;box-shadow:none!important">
+                <div class="card-header" style="font-size:0.82rem;font-weight:700">
+                    <i class="bi bi-info-circle me-1"></i> Basic Information
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-sm-8">
+                            <label class="form-label">Title <span class="text-danger">*</span></label>
+                            <input type="text" name="title" class="form-control @error('title') is-invalid @enderror"
+                                   value="{{ old('title') }}" required>
+                            @error('title')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="col-sm-4">
+                            <label class="form-label">Code <span class="text-danger">*</span></label>
+                            <input type="text" name="code" class="form-control @error('code') is-invalid @enderror"
+                                   value="{{ old('code') }}" required placeholder="e.g. CS101">
+                            @error('code')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Description</label>
+                            <textarea name="description" class="form-control" rows="2">{{ old('description') }}</textarea>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <div class="mb-3">
-                <label class="form-label">Code <span class="text-danger">*</span></label>
-                <input type="text" name="code" class="form-control"
-                       value="{{ old('code') }}" required
-                       placeholder="e.g. CS101">
+            {{-- ── Academic Structure ── --}}
+            <div class="card mb-3" style="border:1px solid var(--border-2,#e4e5f0)!important;box-shadow:none!important">
+                <div class="card-header" style="font-size:0.82rem;font-weight:700">
+                    <i class="bi bi-mortarboard me-1"></i> Academic Structure
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-sm-6">
+                            <label class="form-label">Academic Year <span class="text-danger">*</span></label>
+                            <select name="academic_year_id" class="form-select @error('academic_year_id') is-invalid @enderror" required>
+                                <option value="">— Select Academic Year —</option>
+                                @foreach($academicYears as $ay)
+                                <option value="{{ $ay->id }}"
+                                    {{ old('academic_year_id', $currentYearId) == $ay->id ? 'selected' : '' }}>
+                                    {{ $ay->name }} {{ $ay->is_current ? '(Current)' : '' }}
+                                </option>
+                                @endforeach
+                            </select>
+                            @error('academic_year_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label">Year Level <span class="text-danger">*</span></label>
+                            <select name="year_level" id="yearLevelSelect" class="form-select @error('year_level') is-invalid @enderror" required>
+                                @foreach($yearLevels as $val => $label)
+                                <option value="{{ $val }}" {{ old('year_level', 0) == $val ? 'selected' : '' }}>
+                                    {{ $label }}
+                                </option>
+                                @endforeach
+                            </select>
+                            @error('year_level')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label">Semester <span class="text-danger">*</span></label>
+                            <select name="semester" class="form-select @error('semester') is-invalid @enderror" required>
+                                <option value="1" {{ old('semester') == '1' ? 'selected' : '' }}>Semester 1</option>
+                                <option value="2" {{ old('semester') == '2' ? 'selected' : '' }}>Semester 2</option>
+                            </select>
+                            @error('semester')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+
+                        {{-- Major — from majors table --}}
+                        <div class="col-sm-6" id="majorWrapper">
+                            <label class="form-label">
+                                Major <span class="text-danger">*</span>
+                            </label>
+                            <select name="major_id" id="majorSelect" class="form-select @error('major_id') is-invalid @enderror" required>
+                                <option value="">— Select Major —</option>
+                                @foreach($majors as $m)
+                                <option value="{{ $m->id }}" {{ old('major_id') == $m->id ? 'selected' : '' }}>
+                                    {{ $m->code }}
+                                </option>
+                                @endforeach
+                            </select>
+                            @error('major_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <div class="mb-3">
-                <label class="form-label">Description</label>
-                <textarea name="description" class="form-control" rows="3">{{ old('description') }}</textarea>
-            </div>
-
-            <div class="row g-3 mb-3">
-                <div class="col-sm-6">
-                    <label class="form-label">Teacher</label>
-                    <select name="teacher_id" class="form-select">
-                        <option value="">— No teacher assigned —</option>
+            {{-- ── Teacher Assignment ── --}}
+            <div class="card mb-4" style="border:1px solid var(--border-2,#e4e5f0)!important;box-shadow:none!important">
+                <div class="card-header" style="font-size:0.82rem;font-weight:700">
+                    <i class="bi bi-person-badge me-1"></i> Teacher Assignment
+                </div>
+                <div class="card-body">
+                    <label class="form-label">Assigned Teacher <span class="text-danger">*</span></label>
+                    <select name="teacher_id" class="form-select @error('teacher_id') is-invalid @enderror" required>
+                        <option value="">— Select Teacher —</option>
                         @foreach($teachers as $t)
                         <option value="{{ $t->id }}" {{ old('teacher_id') == $t->id ? 'selected' : '' }}>
                             {{ $t->name }}
                         </option>
                         @endforeach
                     </select>
+                    @error('teacher_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
                 </div>
-                <div class="col-sm-6">
-                    <label class="form-label">Year Level <span class="text-danger">*</span></label>
-                    <select name="year_level" class="form-select" required>
-                        @foreach($yearLevels as $val => $label)
-                        <option value="{{ $val }}" {{ old('year_level', 0) == $val ? 'selected' : '' }}>
-                            {{ $label }}
-                        </option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="col-sm-6">
-                    <label class="form-label">Academic Year</label>
-                    <select name="academic_year_id" class="form-select">
-                        <option value="">— All Academic Years —</option>
-                        @foreach($academicYears ?? [] as $ay)
-                        <option value="{{ $ay->id }}" {{ old('academic_year_id') == $ay->id ? 'selected' : '' }}>
-                            {{ $ay->name }} {{ $ay->is_current ? '(Current)' : '' }}
-                        </option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="col-sm-6">
-                    <label class="form-label">Semester <span class="text-danger">*</span></label>
-                    <select name="semester" class="form-select" required>
-                        @foreach(\App\Models\Course::$semesterLabels as $val => $label)
-                        <option value="{{ $val }}" {{ old('semester', 0) == $val ? 'selected' : '' }}>
-                            {{ $label }}
-                        </option>
-                        @endforeach
-                    </select>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label class="form-label">Description</label>
-                <textarea name="description" class="form-control" rows="3">{{ old('description') }}</textarea>
             </div>
 
             <div class="d-flex gap-2">

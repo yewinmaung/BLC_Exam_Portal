@@ -21,6 +21,54 @@
     @endif
 </div>
 
+{{-- ── Search & Filter ── --}}
+<div class="card mb-3">
+    <div class="card-body py-2 px-3">
+        <form method="GET" action="{{ route('admin.students.index') }}">
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+                {{-- Text search --}}
+                <div class="input-group" style="max-width:320px">
+                    <span class="input-group-text" style="background:#f8f9fc;border-right:0;border-color:#e2e8f0">
+                        <i class="bi bi-search" style="color:#9ca3af;font-size:0.8rem"></i>
+                    </span>
+                    <input type="text" name="search" value="{{ request('search') }}"
+                           class="form-control" style="border-left:0;border-color:#e2e8f0;font-size:0.855rem"
+                           placeholder="Name or email…" maxlength="100" autocomplete="off">
+                    @if(request('search'))
+                    <a href="{{ route('admin.students.index', request()->except('search','page')) }}"
+                       class="input-group-text text-muted" style="background:#f8f9fc;border-color:#e2e8f0;text-decoration:none">
+                        <i class="bi bi-x"></i>
+                    </a>
+                    @endif
+                </div>
+                {{-- Year Level dropdown --}}
+                <select name="year_level_id" class="form-select form-select-sm" style="max-width:150px;font-size:0.8rem">
+                    <option value="">All Year Levels</option>
+                    @foreach($yearLevels as $yl)
+                    <option value="{{ $yl->id }}" {{ request('year_level_id') == $yl->id ? 'selected' : '' }}>
+                        {{ $yl->name }}
+                    </option>
+                    @endforeach
+                </select>
+                {{-- Status dropdown --}}
+                <select name="status" class="form-select form-select-sm" style="max-width:130px;font-size:0.8rem">
+                    <option value="">All Status</option>
+                    <option value="active"   {{ request('status') === 'active'   ? 'selected' : '' }}>Active</option>
+                    <option value="inactive" {{ request('status') === 'inactive' ? 'selected' : '' }}>Inactive</option>
+                </select>
+                <button type="submit" class="btn btn-primary btn-sm px-3">
+                    <i class="bi bi-funnel-fill me-1"></i>Filter
+                </button>
+                @if(request()->hasAny(['search','year_level_id','status']))
+                <a href="{{ route('admin.students.index') }}" class="btn btn-outline-secondary btn-sm" title="Reset">
+                    <i class="bi bi-arrow-counterclockwise"></i>
+                </a>
+                @endif
+            </div>
+        </form>
+    </div>
+</div>
+
 <div class="card">
     <div class="card-header d-flex align-items-center justify-content-between">
         <span><i class="bi bi-mortarboard me-2"></i>All Students</span>
@@ -30,7 +78,7 @@
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table datatable mb-0">
+            <table class="table mb-0">
                 <thead>
                     <tr>
                         <th>Name</th>
@@ -94,7 +142,12 @@
             </table>
         </div>
         @if($students->hasPages())
-        <div class="p-3 border-top">{{ $students->links() }}</div>
+        <div class="p-3 border-top d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <span class="text-muted" style="font-size:0.8rem">
+                Showing {{ $students->firstItem() }} to {{ $students->lastItem() }} of {{ $students->total() }} entries
+            </span>
+            {{ $students->links() }}
+        </div>
         @endif
     </div>
 </div>

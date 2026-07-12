@@ -24,6 +24,9 @@ class ReAttemptController extends Controller
             ->latest()
             ->paginate(20);
 
+        // Mark reattempt notifications as read when student visits this page
+        \App\Models\UserNotification::markCategoryRead(auth()->id(), 'reattempt');
+
         return view('student.reattempts.index', compact('requests'));
     }
 
@@ -42,7 +45,7 @@ class ReAttemptController extends Controller
 
         $usedAttempts = ExamAttempt::where('exam_id', $exam->id)
             ->where('student_id', auth()->id())
-            ->whereIn('status', ['submitted', 'terminated', 'suspicious'])
+            ->whereIn('status', ['submitted', 'terminated', 'suspicious', 'rejected'])
             ->count();
 
         if ($usedAttempts > 0) {
@@ -82,7 +85,7 @@ class ReAttemptController extends Controller
 
         $usedAttempts = ExamAttempt::where('exam_id', $exam->id)
             ->where('student_id', auth()->id())
-            ->whereIn('status', ['submitted', 'terminated', 'suspicious'])
+            ->whereIn('status', ['submitted', 'terminated', 'suspicious', 'rejected'])
             ->count();
         if ($usedAttempts > 0) {
             return back()->withErrors(['error' => 'You already attempted this exam.']);

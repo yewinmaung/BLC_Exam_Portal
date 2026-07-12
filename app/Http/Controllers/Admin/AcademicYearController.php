@@ -17,10 +17,31 @@ class AcademicYearController extends Controller
 
     /* ── CRUD ─────────────────────────────────────────────────── */
 
-    public function index()
+    public function index(Request $request)
     {
-        $years = AcademicYear::withCount('studentYearRecords')->latest()->paginate(15);
-        return view('admin.academic.years.index', compact('years'));
+        $search = $request->string('search')->trim()->limit(100)->value();
+        $yearFilter = $request->filled('year') ? $request->year : null;
+        $statusFilter = $request->filled('status') ? $request->status : null;
+
+        $years = AcademicYear::withCount('studentYearRecords')
+            ->when($search, fn ($q) =>
+                $q->where('name', 'like', "%{$search}%")
+            )
+            ->when($yearFilter, fn ($q) =>
+                $q->where('start_year', $yearFilter)
+            )
+            ->when($statusFilter === 'current', fn ($q) => $q->where('is_current', true))
+            ->when($statusFilter === 'past', fn ($q) => $q->where('is_current', false))
+            ->latest()
+            ->paginate(15)
+            ->withQueryString();
+
+        // Get unique years for filter dropdown
+        $availableYears = AcademicYear::distinct()
+            ->orderByDesc('start_year')
+            ->pluck('start_year');
+
+        return view('admin.academic.years.index', compact('years', 'availableYears'));
     }
 
     public function create()

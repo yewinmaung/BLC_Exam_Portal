@@ -11,9 +11,6 @@ class AcademicYear extends Model
     protected $casts    = ['is_current' => 'boolean'];
 
     public function studentYearRecords(): HasMany { return $this->hasMany(StudentYearRecord::class); }
-    public function yearlyExamResults(): HasMany  { return $this->hasMany(YearlyExamResult::class); }
-    public function certificateLogs(): HasMany    { return $this->hasMany(CertificateLog::class); }
-    public function promotionHistories(): HasMany { return $this->hasMany(PromotionHistory::class); }
 
     public static function current(): ?self
     {

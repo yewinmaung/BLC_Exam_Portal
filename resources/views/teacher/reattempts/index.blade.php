@@ -28,12 +28,7 @@
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table datatable mb-0">
-                <thead>
-                    <tr>
-                        <th>Student</th>
-                        <th>Exam</th>
-                        <th>Reason</th>
+            <table class="table mb-0">
                         <th>Status</th>
                         <th>Admin Remark</th>
                         <th>Date</th>
@@ -96,7 +91,14 @@
                 </tbody>
             </table>
         </div>
-        
+        @if($requests->hasPages())
+        <div class="p-3 border-top d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <span class="text-muted" style="font-size:0.8rem">
+                Showing {{ $requests->firstItem() }} to {{ $requests->lastItem() }} of {{ $requests->total() }} entries
+            </span>
+            {{ $requests->links() }}
+        </div>
+        @endif
     </div>
 </div>
 @endsection

@@ -238,6 +238,14 @@
             </div>
         @endif
 
+        @if(session('info'))
+            <div class="alert alert-info alert-dismissible fade show d-flex align-items-center gap-2 mb-3">
+                <i class="bi bi-info-circle-fill"></i>
+                <span>{{ session('info') }}</span>
+                <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
+            </div>
+        @endif
+
         @if($errors->any())
             <div class="alert alert-danger alert-dismissible fade show d-flex align-items-start gap-2 mb-3">
                 <i class="bi bi-exclamation-triangle-fill mt-1"></i>
@@ -290,10 +298,34 @@
         overlay.style.display = 'none';
     });
 
-    // DataTables
+    // DataTables — suppress alert dialogs and initialize each table individually.
     $(document).ready(function(){
-        $('.datatable').DataTable({ responsive:true, pageLength:15,
-            language:{ search:'<i class="bi bi-search"></i>', searchPlaceholder:'Search...' }
+        // Turn off DataTables' built-in alert() for errors (TN10, etc.)
+        $.fn.dataTable.ext.errMode = 'none';
+
+        $('.datatable').each(function () {
+            var $t = $(this);
+            // Remove Blade @@empty colspan rows before DataTables init.
+            // DataTables counts actual <td> elements (not colspan values), so a single
+            // <td colspan="N"> always triggers TN10 "Incorrect column count".
+            var bodyRows = $t.find('tbody tr');
+            if (bodyRows.length === 1) {
+                var firstCell = bodyRows.first().find('td').first();
+                if (parseInt(firstCell.attr('colspan') || '1', 10) > 1) {
+                    bodyRows.first().remove(); // DataTables will show its own emptyTable message
+                }
+            }
+            $t.DataTable({
+                retrieve  : true,
+                responsive: true,
+                pageLength: 15,
+                language  : {
+                    search        : '<i class="bi bi-search"></i>',
+                    searchPlaceholder: 'Search...',
+                    emptyTable    : '<span class="text-muted">No records found.</span>',
+                    zeroRecords   : '<span class="text-muted">No matching records found.</span>'
+                }
+            });
         });
     });
 })();
@@ -380,8 +412,52 @@
             headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
         })
         .then(r => r.json())
-        .then(data => renderNotifications(data))
+        .then(data => {
+            renderNotifications(data);
+            refreshNavBadges();   // also update per-category sidebar badges
+        })
         .catch(() => {});
+    }
+
+    /**
+     * Fetch per-category counts and update the sidebar nav badges.
+     * The sidebar badges are server-rendered on page load; this keeps
+     * them live during the session without a full page reload.
+     */
+    function refreshNavBadges() {
+        fetch('/notifications/unread-by-category', {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(r => r.json())
+        .then(counts => {
+            // ── Student sidebar badges ────────────────────────────────────
+            // exam total on student Exams nav = exam + result + reattempt
+            const examTotal = (counts.exam || 0) + (counts.result || 0) + (counts.reattempt || 0);
+            setNavBadge('nav-badge-exam',      examTotal);
+            setNavBadge('nav-badge-result',    counts.result    || 0);
+            setNavBadge('nav-badge-reattempt', counts.reattempt || 0);
+            setNavBadge('nav-badge-course',    counts.course    || 0);
+            setNavBadge('nav-badge-general',   counts.general   || 0);
+
+            // ── Admin sidebar badges (same IDs pattern, prefixed admin-) ──
+            setNavBadge('admin-badge-exam',      counts.exam      || 0);
+            setNavBadge('admin-badge-reattempt', counts.reattempt || 0);
+            setNavBadge('admin-badge-result',    counts.result    || 0);
+            setNavBadge('admin-badge-course',    counts.course    || 0);
+            setNavBadge('admin-badge-general',   counts.general   || 0);
+        })
+        .catch(() => {});
+    }
+
+    function setNavBadge(id, count) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (count > 0) {
+            el.textContent = count > 99 ? '99+' : count;
+            el.style.display = 'inline-flex';
+        } else {
+            el.style.display = 'none';
+        }
     }
 
     function escHtml(str) {

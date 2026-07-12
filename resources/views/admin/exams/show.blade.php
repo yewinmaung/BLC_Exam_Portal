@@ -17,9 +17,16 @@
         <div class="card mb-3">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <span><i class="bi bi-info-circle me-2"></i>Exam Details</span>
-                <span class="status-pill status-{{ $exam->status === 'pending_approval' ? 'pending' : $exam->status }}">
-                    {{ ucfirst(str_replace('_', ' ', $exam->status)) }}
-                </span>
+                <div class="d-flex gap-2 align-items-center">
+                    <span class="status-pill status-{{ $exam->status === 'pending_approval' ? 'pending' : $exam->status }}">
+                        {{ ucfirst(str_replace('_', ' ', $exam->status)) }}
+                    </span>
+                    @if(in_array($exam->status, ['published', 'closed']))
+                    <a href="{{ route('admin.exams.results', $exam) }}" class="btn btn-sm btn-primary">
+                        <i class="bi bi-bar-chart-fill me-1"></i> View Results
+                    </a>
+                    @endif
+                </div>
             </div>
             <div class="card-body">
                 <div class="row g-2 text-sm">
@@ -90,6 +97,8 @@
         <div class="card mb-3">
             <div class="card-header"><i class="bi bi-calendar3 me-2"></i>Schedule</div>
             <div class="card-body">
+                @if($exam->schedules->isEmpty())
+                {{-- No schedule yet — show the set-schedule form --}}
                 <form method="POST" action="{{ route('admin.exams.schedule', $exam) }}" id="scheduleForm">@csrf
                     <div class="mb-3">
                         <label class="form-label">Start Date & Time <span class="text-danger">*</span></label>
@@ -129,6 +138,43 @@
                         <i class="bi bi-calendar-check me-1"></i> Set Schedule
                     </button>
                 </form>
+                @else
+                {{-- Schedule already set — view only --}}
+                @php $s = $exam->schedules->first(); @endphp
+                <p class="text-muted small mb-3">
+                    <i class="bi bi-lock-fill me-1"></i>
+                    The schedule has been set and cannot be changed.
+                </p>
+                <div class="row g-2 text-sm">
+                    <div class="col-6">
+                        <span class="text-muted small">Start</span>
+                        <div class="fw-600" style="font-weight:600">{{ $s->starts_at->format('M d, Y H:i') }}</div>
+                    </div>
+                    <div class="col-6">
+                        <span class="text-muted small">End</span>
+                        <div class="fw-600" style="font-weight:600">{{ $s->ends_at->format('M d, Y H:i') }}</div>
+                    </div>
+                    <div class="col-4">
+                        <span class="text-muted small">Duration</span>
+                        <div class="fw-600" style="font-weight:600">{{ $s->duration_minutes }} min</div>
+                    </div>
+                    <div class="col-4">
+                        <span class="text-muted small">Attempts</span>
+                        <div class="fw-600" style="font-weight:600">{{ $s->attempt_limit }}</div>
+                    </div>
+                    <div class="col-4">
+                        <span class="text-muted small">Target Year</span>
+                        <div class="fw-600" style="font-weight:600">
+                            {{ $s->target_year ? 'Year ' . $s->target_year : 'All years' }}
+                        </div>
+                    </div>
+                    @if($s->is_published)
+                    <div class="col-12 mt-1">
+                        <span class="status-pill status-published">Live</span>
+                    </div>
+                    @endif
+                </div>
+                @endif
             </div>
         </div>
         @endif
@@ -175,128 +221,7 @@
         </div>
         @endif
 
-        @if($exam->schedules->count())
-        <div class="card">
-            <div class="card-header d-flex align-items-center justify-content-between">
-                <span><i class="bi bi-clock-history me-2"></i>Schedules</span>
-                <span class="badge" style="background:var(--blc-gold-light);color:var(--blc-navy)">
-                    {{ $exam->schedules->count() }}
-                </span>
-            </div>
-            <div class="card-body p-0">
-                @foreach($exam->schedules as $s)
-                <div class="border-bottom">
-                    {{-- Schedule summary row --}}
-                    <div class="p-3 d-flex justify-content-between align-items-start gap-2"
-                         id="schedule-row-{{ $s->id }}">
-                        <div class="flex-grow-1">
-                            <div class="small" style="font-weight:700;color:var(--blc-navy)">
-                                {{ $s->starts_at->format('M d, Y H:i') }}
-                                <span class="text-muted fw-normal">→</span>
-                                {{ $s->ends_at->format('M d, Y H:i') }}
-                            </div>
-                            <div class="text-muted" style="font-size:0.75rem;margin-top:2px">
-                                {{ $s->duration_minutes }}min
-                                · {{ $s->attempt_limit }} attempt(s)
-                                @if($s->target_year)
-                                · <strong>Year {{ $s->target_year }} only</strong>
-                                @endif
-                            </div>
-                        </div>
-                        <div class="d-flex align-items-center gap-1 flex-shrink-0">
-                            @if($s->is_published)
-                            <span class="status-pill status-published">Live</span>
-                            @endif
-                            <button type="button"
-                                    class="btn btn-sm btn-outline-primary"
-                                    title="Edit schedule"
-                                    onclick="toggleEditForm({{ $s->id }})">
-                                <i class="bi bi-pencil"></i>
-                            </button>
-                            @if(!$s->is_published)
-                            <form method="POST"
-                                  action="{{ route('admin.exams.schedule.delete', [$exam, $s]) }}"
-                                  onsubmit="return confirm('Delete this schedule?')">
-                                @csrf @method('DELETE')
-                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
-                                    <i class="bi bi-trash"></i>
-                                </button>
-                            </form>
-                            @endif
-                        </div>
-                    </div>
-
-                    {{-- Inline edit form (hidden by default) --}}
-                    <div id="edit-form-{{ $s->id }}" style="display:none"
-                         class="p-3 pt-0 border-top" style="background:#f8faff">
-                        <form method="POST"
-                              action="{{ route('admin.exams.schedule.update', [$exam, $s]) }}"
-                              class="edit-schedule-form"
-                              data-schedule-id="{{ $s->id }}">
-                            @csrf @method('PUT')
-
-                            <div class="row g-2 mb-2">
-                                <div class="col-sm-6">
-                                    <label class="form-label" style="font-size:0.78rem;font-weight:600">Start</label>
-                                    <input type="datetime-local"
-                                           name="starts_at"
-                                           class="form-control form-control-sm edit-starts-at"
-                                           value="{{ $s->starts_at->format('Y-m-d\TH:i') }}"
-                                           required>
-                                </div>
-                                <div class="col-sm-6">
-                                    <label class="form-label" style="font-size:0.78rem;font-weight:600">End</label>
-                                    <input type="datetime-local"
-                                           name="ends_at"
-                                           class="form-control form-control-sm edit-ends-at"
-                                           value="{{ $s->ends_at->format('Y-m-d\TH:i') }}"
-                                           required>
-                                </div>
-                                <div class="col-sm-4">
-                                    <label class="form-label" style="font-size:0.78rem;font-weight:600">Duration (min)</label>
-                                    <input type="number"
-                                           name="duration_minutes"
-                                           class="form-control form-control-sm edit-duration"
-                                           value="{{ $s->duration_minutes }}"
-                                           min="1" required>
-                                </div>
-                                <div class="col-sm-4">
-                                    <label class="form-label" style="font-size:0.78rem;font-weight:600">Attempts</label>
-                                    <input type="number"
-                                           name="attempt_limit"
-                                           class="form-control form-control-sm"
-                                           value="{{ $s->attempt_limit }}"
-                                           min="1" required>
-                                </div>
-                                <div class="col-sm-4">
-                                    <label class="form-label" style="font-size:0.78rem;font-weight:600">Target Year</label>
-                                    <select name="target_year" class="form-select form-select-sm">
-                                        <option value="">All years</option>
-                                        <option value="1" {{ $s->target_year == 1 ? 'selected' : '' }}>Year 1</option>
-                                        <option value="2" {{ $s->target_year == 2 ? 'selected' : '' }}>Year 2</option>
-                                        <option value="3" {{ $s->target_year == 3 ? 'selected' : '' }}>Year 3</option>
-                                        <option value="4" {{ $s->target_year == 4 ? 'selected' : '' }}>Year 4</option>
-                                        <option value="5" {{ $s->target_year == 5 ? 'selected' : '' }}>Year 5</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div class="d-flex gap-2">
-                                <button type="submit" class="btn btn-sm btn-primary">
-                                    <i class="bi bi-check-circle me-1"></i>Save Changes
-                                </button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary"
-                                        onclick="toggleEditForm({{ $s->id }})">
-                                    Cancel
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-                @endforeach
-            </div>
-        </div>
-        @endif
+        {{-- Schedule history is shown inline in the Schedule card above --}}
     </div>
 
 </div>
@@ -351,38 +276,5 @@
     // Run on page load
     setDefaults();
 })();
-</script>
-
-<script>
-// Toggle inline edit form visibility
-function toggleEditForm(scheduleId) {
-    const form = document.getElementById('edit-form-' + scheduleId);
-    if (!form) return;
-    const isHidden = form.style.display === 'none' || form.style.display === '';
-    form.style.display = isHidden ? 'block' : 'none';
-}
-
-// Auto-update end time in edit forms when start or duration changes
-document.querySelectorAll('.edit-schedule-form').forEach(function(form) {
-    const startsAt = form.querySelector('.edit-starts-at');
-    const endsAt   = form.querySelector('.edit-ends-at');
-    const duration = form.querySelector('.edit-duration');
-
-    function pad(n) { return String(n).padStart(2, '0'); }
-    function toLocalInput(date) {
-        return date.getFullYear() + '-' + pad(date.getMonth()+1) + '-' +
-               pad(date.getDate()) + 'T' + pad(date.getHours()) + ':' + pad(date.getMinutes());
-    }
-    function syncEnd() {
-        if (!startsAt.value || !duration.value) return;
-        const start = new Date(startsAt.value);
-        const mins  = parseInt(duration.value, 10);
-        if (isNaN(start.getTime()) || isNaN(mins)) return;
-        endsAt.value = toLocalInput(new Date(start.getTime() + mins * 60000));
-    }
-
-    startsAt.addEventListener('change', syncEnd);
-    duration.addEventListener('input',  syncEnd);
-});
 </script>
 @endpush

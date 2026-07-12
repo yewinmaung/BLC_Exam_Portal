@@ -5,6 +5,5 @@
     <a class="nav-link {{ request()->routeIs('teacher.exams.create') ? 'active' : '' }}" href="{{ route('teacher.exams.create') }}"><i class="bi bi-plus-circle"></i> Create Exam</a>
     <a class="nav-link {{ request()->routeIs('teacher.results.*') ? 'active' : '' }}" href="{{ route('teacher.results.index') }}"><i class="bi bi-bar-chart-line"></i> Results</a>
     <a class="nav-link {{ request()->routeIs('teacher.reattempts.*') ? 'active' : '' }}" href="{{ route('teacher.reattempts.index') }}"><i class="bi bi-arrow-repeat"></i> Re-attempts</a>
-    <a class="nav-link {{ request()->routeIs('chat.*') ? 'active' : '' }}" href="{{ route('chat.index') }}"><i class="bi bi-chat-dots"></i> Chat</a>
     <a class="nav-link {{ request()->routeIs('notifications.*') ? 'active' : '' }}" href="{{ route('notifications.index') }}"><i class="bi bi-bell"></i> Notifications</a>
 </nav>

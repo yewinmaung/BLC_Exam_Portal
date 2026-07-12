@@ -13,22 +13,11 @@
 @if($role === 'admin')
     @include('partials.admin-sidebar')
 @elseif($role === 'teacher')
-<nav class="nav flex-column gap-1">
-    <a class="nav-link" href="{{ route('teacher.dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard</a>
-    <a class="nav-link" href="{{ route('teacher.exams.index') }}"><i class="bi bi-file-earmark-text"></i> My Exams</a>
-    <a class="nav-link" href="{{ route('teacher.exams.create') }}"><i class="bi bi-plus-circle"></i> Create Exam</a>
-    <a class="nav-link" href="{{ route('chat.index') }}"><i class="bi bi-chat-dots"></i> Chat</a>
-    <a class="nav-link active" href="{{ route('notifications.index') }}"><i class="bi bi-bell"></i> Notifications</a>
-</nav>
+@include('partials.teacher-sidebar')
+
 @else
-<nav class="nav flex-column gap-1">
-    <a class="nav-link" href="{{ route('student.dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard</a>
-    <a class="nav-link" href="{{ route('student.courses.index') }}"><i class="bi bi-book"></i> My Courses</a>
-    <a class="nav-link" href="{{ route('student.exams.index') }}"><i class="bi bi-pencil-square"></i> Exams</a>
-    <a class="nav-link {{ request()->routeIs('student.reattempts.*') ? 'active' : '' }}" href="{{ route('student.reattempts.index') }}"><i class="bi bi-arrow-repeat"></i> Re-attempts</a>
-    <a class="nav-link" href="{{ route('chat.index') }}"><i class="bi bi-chat-dots"></i> Chat</a>
-    <a class="nav-link active" href="{{ route('notifications.index') }}"><i class="bi bi-bell"></i> Notifications</a>
-</nav>
+@include('partials.student-sidebar')
+
 @endif
 
 @endsection

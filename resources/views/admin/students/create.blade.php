@@ -53,8 +53,7 @@
                             <option value="">— Not assigned —</option>
                             @foreach($academicYears as $ay)
                             <option value="{{ $ay->id }}"
-                                {{ old('academic_year_id') == $ay->id ? 'selected' : '' }}
-                                {{ $ay->is_current ? 'data-current=1' : '' }}>
+                                {{ old('academic_year_id', $currentYearId) == $ay->id ? 'selected' : '' }}>
                                 {{ $ay->name }} {{ $ay->is_current ? '(Current)' : '' }}
                             </option>
                             @endforeach
@@ -89,9 +88,23 @@
                         <label class="form-label">Department</label>
                         <input type="text" name="department" class="form-control" value="{{ old('department') }}" placeholder="e.g. Computer Science">
                     </div>
-                    <div class="col-sm-4">
-                        <label class="form-label">Major</label>
-                        <input type="text" name="major" class="form-control" value="{{ old('major') }}" placeholder="e.g. Software Engineering">
+                    <div class="col-sm-4" id="majorWrapper">
+                        <label class="form-label" id="majorLabel">
+                            Major
+                            <span class="text-danger" id="majorRequired" style="display:none">*</span>
+                            <span class="text-muted fw-normal" id="majorOptional" style="font-size:0.8rem">(Year 1 — not required)</span>
+                        </label>
+                        <select name="major_id" id="sel_major" class="form-select @error('major_id') is-invalid @enderror">
+                            <option value="">— No Major (Year 1) —</option>
+                            @foreach($majors as $m)
+                            <option value="{{ $m->id }}" 
+                                    data-code="{{ $m->code }}"
+                                    {{ old('major_id') == $m->id ? 'selected' : '' }}>
+                                {{ $m->code }}
+                            </option>
+                            @endforeach
+                        </select>
+                        @error('major_id')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
                     </div>
                 </div>
             </div>
@@ -129,117 +142,66 @@
 }
 .section-box > .row { padding: 1rem; margin: 0; }
 .section-box > .row.g-3 { padding: 0.85rem 0.85rem 0.85rem 0.85rem; }
-.course-item {
-    display: flex; align-items: center; gap: 0.6rem;
-    padding: 0.55rem 0.85rem; cursor: pointer;
-    border-bottom: 1px solid var(--border-2, #e4e5f0);
-    transition: background 0.12s;
-}
-.course-item:last-child { border-bottom: none; }
-.course-item:hover { background: var(--royal-light, #ede9fe); }
-.course-item input[type="checkbox"] {
-    accent-color: var(--royal, #3730a3);
-    width: 15px; height: 15px; flex-shrink: 0;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
 </style>
 @endpush
 
 @push('scripts')
 <script>
 (function () {
-    const selAcYear    = document.getElementById('sel_academic_year');
     const selYearLevel = document.getElementById('sel_year_level');
-    const selSemester  = document.getElementById('sel_semester');
-    const courseList   = document.getElementById('courseList');
-    const courseEmpty  = document.getElementById('courseEmpty');
-    const courseLoading= document.getElementById('courseLoading');
-    const filterLabel  = document.getElementById('courseFilterLabel');
-    const apiUrl       = "{{ route('admin.courses.by-year-level') }}";
+    const majorSel     = document.getElementById('sel_major');
+    const reqBadge     = document.getElementById('majorRequired');
+    const optNote      = document.getElementById('majorOptional');
 
-    let selectedCourseIds = @json(old('course_ids', []));
+    if (!selYearLevel || !majorSel) return;
 
-    function loadCourses() {
-        const academicYearId = selAcYear.value;
-        const yearLevelId    = selYearLevel.value;
-        const semester       = selSemester.value;
+    // Store all major options for show/hide
+    const allMajorOptions = Array.from(majorSel.options);
 
-        // Get the level number from the selected option's data attribute
-        const selectedOption = selYearLevel.options[selYearLevel.selectedIndex];
-        const level          = selectedOption ? (selectedOption.dataset.level || 0) : 0;
+    function toggleMajor() {
+        const opt   = selYearLevel.options[selYearLevel.selectedIndex];
+        const level = opt ? parseInt(opt.dataset.level || '0', 10) : 0;
 
-        if (!yearLevelId) {
-            courseList.innerHTML = '';
-            courseEmpty.style.display = 'block';
-            courseList.appendChild(courseEmpty);
-            filterLabel.textContent = 'Select year level & semester to filter courses';
-            return;
+        // Clear current options except the first "No Major" option
+        while (majorSel.options.length > 1) {
+            majorSel.remove(1);
         }
 
-        // Show loading
-        courseList.innerHTML = '';
-        courseLoading.style.display = 'block';
-        filterLabel.textContent = 'Loading...';
+        // Filter and add back appropriate major options
+        allMajorOptions.forEach((option, index) => {
+            if (index === 0) return; // Skip "No Major" option
 
-        const params = new URLSearchParams({
-            year_level:       level,
-            academic_year_id: academicYearId,
-            semester:         semester,
+            const code = option.dataset.code || '';
+            
+            // For Year 1: Show ONLY CST
+            if (level === 1) {
+                if (code === 'CST') {
+                    majorSel.add(option.cloneNode(true));
+                }
+            } 
+            // For Year 2+: Show CS, CT, and other majors (hide CST)
+            else if (level >= 2) {
+                if (code !== 'CST') {
+                    majorSel.add(option.cloneNode(true));
+                }
+            }
         });
 
-        fetch(apiUrl + '?' + params.toString())
-            .then(r => r.json())
-            .then(courses => {
-                courseLoading.style.display = 'none';
-                courseList.innerHTML = '';
-
-                if (!courses.length) {
-                    courseList.innerHTML = `
-                        <div class="text-center py-4 text-muted small">
-                            <i class="bi bi-exclamation-circle d-block mb-1" style="font-size:1.5rem;opacity:0.4"></i>
-                            No courses found for this combination. Create courses first with matching settings.
-                        </div>`;
-                    filterLabel.textContent = '0 courses found';
-                    return;
-                }
-
-                filterLabel.textContent = courses.length + ' course(s) available';
-
-                courses.forEach(c => {
-                    const label = document.createElement('label');
-                    label.className = 'course-item';
-
-                    const checked = selectedCourseIds.includes(String(c.id)) ? 'checked' : '';
-                    const semLabel = c.semester == 1 ? 'Sem 1' : c.semester == 2 ? 'Sem 2' : 'Both';
-
-                    label.innerHTML = `
-                        <input type="checkbox" name="course_ids[]" value="${c.id}" ${checked}>
-                        <div>
-                            <div style="font-size:0.84rem;font-weight:600">${escHtml(c.title)}</div>
-                            <div style="font-size:0.7rem;color:#9ca3af">${escHtml(c.code)} · ${semLabel}</div>
-                        </div>`;
-                    courseList.appendChild(label);
-                });
-            })
-            .catch(() => {
-                courseLoading.style.display = 'none';
-                courseList.innerHTML = '<div class="text-center py-3 text-muted small">Failed to load courses. Please try again.</div>';
-                filterLabel.textContent = 'Error loading';
-            });
+        // Update required field and display
+        if (level >= 2) {
+            majorSel.required = true;
+            reqBadge.style.display = 'inline';
+            optNote.style.display  = 'none';
+        } else {
+            majorSel.required = false;
+            if (level < 2) majorSel.value = '';
+            reqBadge.style.display = 'none';
+            optNote.style.display  = 'inline';
+        }
     }
 
-    function escHtml(str) {
-        return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    }
-
-    selAcYear.addEventListener('change',    loadCourses);
-    selYearLevel.addEventListener('change', loadCourses);
-    selSemester.addEventListener('change',  loadCourses);
-
-    // Auto-load if values already selected (e.g. old() on validation error)
-    if (selYearLevel.value) {
-        loadCourses();
-    }
+    selYearLevel.addEventListener('change', toggleMajor);
+    toggleMajor();
 })();
 </script>
 @endpush

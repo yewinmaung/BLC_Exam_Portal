@@ -23,13 +23,23 @@ class TeacherController extends Controller
     ) {
     }
 
-    public function index()
+    public function index(Request $request)
     {
+        $search = $request->string('search')->trim()->limit(100)->value();
+        $status = $request->filled('status') ? $request->status : null;
+
         $teachers = User::whereHas('role', fn ($q) => $q->where('slug', RoleSlug::TEACHER))
             ->with('role')
             ->withCount(['taughtCourses', 'examsAsTeacher'])
+            ->when($search, fn ($q) =>
+                $q->where('name',  'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%")
+            )
+            ->when($status === 'active',   fn ($q) => $q->where('is_active', true))
+            ->when($status === 'inactive', fn ($q) => $q->where('is_active', false))
             ->latest()
-            ->paginate(15);
+            ->paginate(15)
+            ->withQueryString();
 
         return view('admin.teachers.index', compact('teachers'));
     }
@@ -74,15 +84,31 @@ class TeacherController extends Controller
 
     public function update(Request $request, User $teacher)
     {
+     
         $this->ensureTeacher($teacher);
-
+        
         $data = $request->validate([
-            'course_ids'   => 'nullable|array',
+           'course_ids'   => 'nullable|array',
             'course_ids.*' => 'exists:courses,id',
         ]);
 
         $this->courseAssignment->syncTeacherCourses($teacher, $data['course_ids'] ?? []);
-
+        $data=$request->validate([
+            
+            'name'   => 'required|string|max:255',
+            'email'  => 'required|email|unique:users,email,' . $teacher->id,
+           
+        ]);
+            $updateData = [
+            'name'      => $data['name'],
+            'email'     => $data['email'],
+            'phone'     => $data['phone'] ?? null,
+            'is_active' => $request->boolean('is_active', true),
+        ];
+        if (!empty($data['password'])) {
+            $updateData['password'] = Hash::make($data['password']);
+        }
+        $teacher->update($updateData);
         $this->activityLog->log('teacher_courses_updated', "Updated courses for teacher {$teacher->email}", $teacher);
 
         return redirect()->route('admin.teachers.show', $teacher)

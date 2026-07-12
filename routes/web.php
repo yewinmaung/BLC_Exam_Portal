@@ -1,7 +1,6 @@
 <?php
 
 use App\Http\Controllers\Auth\AuthController;
-use App\Http\Controllers\ChatController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\Admin\CheatingLogController;
@@ -18,7 +17,6 @@ use App\Http\Controllers\Teacher\ProfileController as TeacherProfileController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', fn () => view('welcome'))->name('home');
-Route::get('certificates/verify/{token}', [\App\Http\Controllers\Admin\CertificateController::class, 'verify'])->name('certificates.verify');
 
 Route::middleware('guest')->group(function () {
     Route::get('login', [AuthController::class, 'showLogin'])->name('login');
@@ -34,11 +32,7 @@ Route::middleware(['auth', 'exam.session'])->group(function () {
     Route::post('notifications/{notification}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
     Route::post('notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.read-all');
     Route::get('notifications/unread-count', [NotificationController::class, 'unreadCount'])->name('notifications.unread-count');
-
-    Route::get('chat', [ChatController::class, 'index'])->name('chat.index');
-    Route::get('chat/{user}', [ChatController::class, 'conversation'])->name('chat.conversation');
-    Route::post('chat/{user}', [ChatController::class, 'send'])->name('chat.send');
-    Route::get('chat/{user}/poll', [ChatController::class, 'poll'])->name('chat.poll');
+    Route::get('notifications/unread-by-category', [NotificationController::class, 'unreadCountsByCategory'])->name('notifications.unread-by-category');
 
     Route::prefix('admin')->middleware('role:admin')->name('admin.')->group(function () {
         Route::get('dashboard', [DashboardController::class, 'admin'])->name('dashboard');
@@ -46,12 +40,15 @@ Route::middleware(['auth', 'exam.session'])->group(function () {
         Route::post('users/{user}/terminate', [UserController::class, 'terminate'])->name('users.terminate');
         Route::resource('courses', AdminCourseController::class)->except(['show']);
         Route::get('courses-by-year-level', [AdminCourseController::class, 'byYearLevel'])->name('courses.by-year-level');
+        Route::resource('majors', \App\Http\Controllers\Admin\MajorController::class)->except(['show']);
+        Route::get('majors/{major}/courses', [\App\Http\Controllers\Admin\MajorController::class, 'show'])->name('majors.show');
         Route::get('enrollments', [\App\Http\Controllers\Admin\EnrollmentController::class, 'index'])->name('enrollments.index');
         Route::post('enrollments', [\App\Http\Controllers\Admin\EnrollmentController::class, 'store'])->name('enrollments.store');
         Route::get('enrollments/students-by-year-level', [\App\Http\Controllers\Admin\EnrollmentController::class, 'studentsByYearLevel'])->name('enrollments.students-by-year-level');
         Route::delete('enrollments/{enrollment}', [\App\Http\Controllers\Admin\EnrollmentController::class, 'destroy'])->name('enrollments.destroy');
         Route::get('exams', [AdminExamController::class, 'index'])->name('exams.index');
         Route::get('exams/{exam}', [AdminExamController::class, 'show'])->name('exams.show');
+        Route::get('exams/{exam}/results', [AdminExamController::class, 'results'])->name('exams.results');
         Route::post('exams/{exam}/approve', [AdminExamController::class, 'approve'])->name('exams.approve');
         Route::post('exams/{exam}/schedule', [AdminExamController::class, 'schedule'])->name('exams.schedule');
         Route::put('exams/{exam}/schedule/{schedule}', [AdminExamController::class, 'updateSchedule'])->name('exams.schedule.update');
@@ -118,16 +115,6 @@ Route::middleware(['auth', 'exam.session'])->group(function () {
         // ── Results ──
         Route::get('results', [\App\Http\Controllers\Admin\ResultController::class, 'index'])->name('results.index');
         Route::get('results/student/{student}', [\App\Http\Controllers\Admin\ResultController::class, 'student'])->name('results.student');
-
-        // ── Transcripts & Certificates ──
-        Route::prefix('academic')->name('academic.')->group(function () {
-            Route::get('transcripts/{student}', [\App\Http\Controllers\Admin\TranscriptController::class, 'show'])->name('transcripts.show');
-            Route::post('transcripts/{student}/generate', [\App\Http\Controllers\Admin\TranscriptController::class, 'generate'])->name('transcripts.generate');
-            Route::get('transcripts/{student}/pdf', [\App\Http\Controllers\Admin\TranscriptController::class, 'pdf'])->name('transcripts.pdf');
-            Route::get('certificates', [\App\Http\Controllers\Admin\CertificateController::class, 'index'])->name('certificates.index');
-            Route::post('certificates/{student}/issue', [\App\Http\Controllers\Admin\CertificateController::class, 'issue'])->name('certificates.issue');
-            Route::get('certificates/{cert}/pdf', [\App\Http\Controllers\Admin\CertificateController::class, 'pdf'])->name('certificates.pdf');
-        });
     });
 
     Route::prefix('teacher')->middleware('role:teacher,admin')->name('teacher.')->group(function () {
@@ -162,10 +149,11 @@ Route::middleware(['auth', 'exam.session'])->group(function () {
         Route::get('exams', [StudentExamController::class, 'index'])->name('exams.index');
         Route::get('exams/{exam}', [StudentExamController::class, 'show'])->name('exams.show');
         Route::post('exams/{exam}/start', [StudentExamController::class, 'start'])->name('exams.start');
-        Route::get('attempt/{attempt}/take', [ExamSessionController::class, 'take'])->name('exam.take');
-        Route::post('attempt/{attempt}/save', [ExamSessionController::class, 'saveAnswer'])->name('exam.save');
-        Route::post('attempt/{attempt}/violation', [ExamSessionController::class, 'violation'])->name('exam.violation');
-        Route::post('attempt/{attempt}/submit', [ExamSessionController::class, 'submit'])->name('exam.submit');
+        Route::get('attempt/{attempt}/take', [ExamSessionController::class, 'take'])->middleware('exam.active')->name('exam.take');
+        Route::post('attempt/{attempt}/save', [ExamSessionController::class, 'saveAnswer'])->middleware('exam.active')->name('exam.save');
+        Route::post('attempt/{attempt}/violation', [ExamSessionController::class, 'violation'])->middleware('exam.active')->name('exam.violation');
+        Route::post('attempt/{attempt}/disconnect', [ExamSessionController::class, 'disconnect'])->name('exam.disconnect');
+        Route::post('attempt/{attempt}/submit', [ExamSessionController::class, 'submit'])->middleware('exam.active')->name('exam.submit');
         Route::get('reattempts', [\App\Http\Controllers\Student\ReAttemptController::class, 'index'])->name('reattempts.index');
         Route::get('reattempts/create/{exam}', [\App\Http\Controllers\Student\ReAttemptController::class, 'create'])->name('reattempts.create');
         Route::post('reattempts', [\App\Http\Controllers\Student\ReAttemptController::class, 'store'])->name('reattempts.store');

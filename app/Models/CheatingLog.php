@@ -9,6 +9,9 @@ class CheatingLog extends Model
 {
     protected $fillable = [
         'attempt_id', 'student_id', 'violation_type', 'details', 'warning_number',
+        // Security extension — Phase 2 (client fingerprint)
+        'user_agent', 'browser', 'device', 'os',
+        'screen_resolution', 'timezone', 'ip_address',
     ];
 
     public function attempt(): BelongsTo

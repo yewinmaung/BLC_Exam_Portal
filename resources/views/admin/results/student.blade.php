@@ -19,12 +19,6 @@
     <a href="{{ route('admin.students.show', $student) }}" class="btn btn-sm btn-outline-primary">
         <i class="bi bi-person me-1"></i> Student Profile
     </a>
-    <a href="{{ route('admin.academic.transcripts.show', $student) }}" class="btn btn-sm btn-outline-secondary">
-        <i class="bi bi-file-earmark-text me-1"></i> Transcript
-    </a>
-    <a href="{{ route('admin.academic.certificates.index') }}?student_id={{ $student->id }}" class="btn btn-sm btn-outline-secondary">
-        <i class="bi bi-award me-1"></i> Certificates
-    </a>
 </div>
 
 {{-- Student info card --}}
@@ -73,7 +67,18 @@
                         </td>
                         <td><span class="badge" style="background:var(--royal-light,#ede9fe);color:var(--royal,#3730a3)">{{ $r->grade }}</span></td>
                         <td>
-                            @if($r->is_passed)
+                            @if($r->isDisqualified())
+                                <div class="d-flex align-items-center gap-1">
+                                    <span class="badge" style="background:#fef3c7;color:#92400e">
+                                        Failed (Cheating)
+                                    </span>
+                                    @if($r->violation_reason)
+                                    <i class="bi bi-info-circle text-warning" 
+                                       data-bs-toggle="tooltip" 
+                                       title="{{ $r->violation_reason }}"></i>
+                                    @endif
+                                </div>
+                            @elseif($r->is_passed)
                                 <span class="badge bg-success">Passed</span>
                             @else
                                 <span class="badge bg-danger">Failed</span>
@@ -110,19 +115,20 @@
             @if($h['results']->count())
             <div class="table-responsive">
                 <table class="table table-sm mb-0" style="font-size:0.8rem">
-                    <thead><tr><th>Exam</th><th>Score</th><th>%</th><th>Grade</th><th>Status</th></tr></thead>
+                    <thead><tr><th>Exam</th><th>Score</th><th>%</th><th>Status</th></tr></thead>
                     <tbody>
                         @foreach($h['results'] as $er)
                         <tr>
                             <td>{{ $er->exam->title ?? '—' }}</td>
                             <td>{{ $er->obtained_marks }}/{{ $er->total_marks }}</td>
                             <td>{{ $er->percentage }}%</td>
-                            <td>{{ $er->grade }}</td>
                             <td>
-                                @if($er->is_passed)
-                                    <span class="badge bg-success">Passed</span>
+                                @if($er->isDisqualified())
+                                    <span class="badge bg-warning text-dark" style="font-size:0.65rem">Failed (Cheating)</span>
+                                @elseif($er->is_passed)
+                                    <span class="badge bg-success" style="font-size:0.65rem">Passed</span>
                                 @else
-                                    <span class="badge bg-danger">Failed</span>
+                                    <span class="badge bg-danger" style="font-size:0.65rem">Failed</span>
                                 @endif
                             </td>
                         </tr>
@@ -131,7 +137,7 @@
                 </table>
             </div>
             @else
-                <div class="text-muted small">No archived results for this period.</div>
+                <div class="text-muted small">No results for this period.</div>
             @endif
         </div>
         @endforeach
@@ -139,3 +145,15 @@
 </div>
 @endif
 @endsection
+
+@push('scripts')
+<script>
+// Initialize Bootstrap tooltips
+document.addEventListener('DOMContentLoaded', function() {
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+});
+</script>
+@endpush

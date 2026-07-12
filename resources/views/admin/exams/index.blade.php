@@ -51,9 +51,18 @@
                             @endif
                         </td>
                         <td>
-                            <a href="{{ route('admin.exams.show', $e) }}" class="btn btn-sm btn-primary">
-                                <i class="bi bi-gear me-1"></i>Manage
-                            </a>
+                            <div class="d-flex gap-1">
+                                <a href="{{ route('admin.exams.show', $e) }}" class="btn btn-sm btn-primary">
+                                    <i class="bi bi-gear me-1"></i>Manage
+                                </a>
+                                @if(in_array($e->status, ['published', 'closed']))
+                                <a href="{{ route('admin.exams.results', $e) }}" 
+                                   class="btn btn-sm btn-outline-primary" 
+                                   title="View Results">
+                                    <i class="bi bi-bar-chart-fill"></i>
+                                </a>
+                                @endif
+                            </div>
                         </td>
                     </tr>
                     @empty

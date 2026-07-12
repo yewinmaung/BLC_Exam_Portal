@@ -29,6 +29,17 @@ class ExamAccessService
             return false;
         }
 
+        // CRITICAL: If student has an active attempt, they must be able to see questions
+        // even if the schedule window has ended (they started within the window)
+        $hasActiveAttempt = ExamAttempt::where('exam_id', $exam->id)
+            ->where('student_id', $user->id)
+            ->where('status', 'in_progress')
+            ->exists();
+
+        if ($hasActiveAttempt) {
+            return true;
+        }
+
         $schedule = $exam->student_schedule;
         if (!$schedule) {
             return false;
@@ -115,7 +126,7 @@ class ExamAccessService
 
         $usedAttempts = ExamAttempt::where('exam_id', $exam->id)
             ->where('student_id', $user->id)
-            ->whereIn('status', ['submitted', 'terminated', 'suspicious'])
+            ->whereIn('status', ['submitted', 'terminated', 'suspicious', 'rejected'])
             ->count();
 
         if ($usedAttempts >= $allowedAttempts) {

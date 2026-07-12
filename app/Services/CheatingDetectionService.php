@@ -6,6 +6,31 @@ use App\Models\CheatingLog;
 use App\Models\ExamAttempt;
 use App\Models\User;
 
+/**
+ * CheatingDetectionService  — LEGACY / READ-ONLY
+ *
+ * This service is retained exclusively because the existing admin view at
+ * /admin/cheating-logs reads CheatingLog records, and the legacy cheating_logs
+ * admin table was built around this service's output.
+ *
+ * ╔══════════════════════════════════════════════════════════════╗
+ * ║  DO NOT call recordViolation() or terminateExam() for new   ║
+ * ║  violation reporting.  Use ExamSecurityService instead.     ║
+ * ║                                                              ║
+ * ║  ExamSessionController no longer injects this service.      ║
+ * ╚══════════════════════════════════════════════════════════════╝
+ *
+ * Responsibilities retained:
+ *  - None in the active request path.
+ *  - Kept compilable so the DI container does not throw on any existing
+ *    binding that has not yet been cleaned up.
+ *
+ * Safe to remove entirely once the legacy /admin/cheating-logs view is
+ * replaced or confirmed to not depend on this class directly.
+ *
+ * @deprecated  Use ExamSecurityService for all violation handling.
+ */
+
 class CheatingDetectionService
 {
     public function __construct(

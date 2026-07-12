@@ -10,13 +10,7 @@
     ]])
 @endsection
 @section('sidebar')
-<nav class="nav flex-column gap-1">
-    <a class="nav-link" href="{{ route('teacher.dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard</a>
-    <a class="nav-link active" href="{{ route('teacher.exams.index') }}"><i class="bi bi-file-earmark-text"></i> My Exams</a>
-    <a class="nav-link" href="{{ route('teacher.exams.create') }}"><i class="bi bi-plus-circle"></i> Create Exam</a>
-    <a class="nav-link" href="{{ route('chat.index') }}"><i class="bi bi-chat-dots"></i> Chat</a>
-    <a class="nav-link" href="{{ route('notifications.index') }}"><i class="bi bi-bell"></i> Notifications</a>
-</nav>
+@include('partials.teacher-sidebar')
 
 @endsection
 
@@ -75,35 +69,11 @@
                 </div>
             </div>
 
-            {{-- Marks + Difficulty --}}
-            <div class="row g-3 mb-3">
-                <div class="col-sm-6">
-                    <label class="form-label">Marks</label>
-                    <input name="marks" type="number" class="form-control"
-                           value="{{ old('marks', $question->marks) }}" min="1" required>
-                </div>
-                <div class="col-sm-6">
-                    <label class="form-label">Difficulty</label>
-                    <select name="difficulty" class="form-select">
-                        <option value="easy"   {{ $question->difficulty === 'easy'   ? 'selected' : '' }}>Easy</option>
-                        <option value="medium" {{ $question->difficulty === 'medium' ? 'selected' : '' }}>Medium</option>
-                        <option value="hard"   {{ $question->difficulty === 'hard'   ? 'selected' : '' }}>Hard</option>
-                    </select>
-                </div>
-            </div>
-
-            {{-- Category --}}
-            <div class="mb-4">
-                <label class="form-label">Category <span class="text-muted fw-normal">(optional)</span></label>
-                <select name="category_id" class="form-select">
-                    <option value="">— None —</option>
-                    @foreach($categories as $cat)
-                    <option value="{{ $cat->id }}"
-                        {{ $question->category_id == $cat->id ? 'selected' : '' }}>
-                        {{ $cat->name }}
-                    </option>
-                    @endforeach
-                </select>
+            {{-- Marks --}}
+            <div class="mb-3">
+                <label class="form-label">Marks</label>
+                <input name="marks" type="number" class="form-control"
+                       value="{{ old('marks', $question->marks) }}" min="1" required>
             </div>
 
             {{-- MCQ / True-False answers --}}
@@ -118,6 +88,14 @@
                 <button type="button" class="btn btn-sm btn-outline-secondary w-100" id="addAnswerBtn">
                     <i class="bi bi-plus me-1"></i> Add Choice
                 </button>
+                  <div class="col-6">
+                            <label class="form-label">Difficulty</label>
+                            <select name="difficulty" class="form-select">
+                                <option value="easy">Easy</option>
+                                <option value="medium" selected>Medium</option>
+                                <option value="hard">Hard</option>
+                            </select>
+                        </div>
             </div>
 
             {{-- Fill in the blank accepted answers --}}

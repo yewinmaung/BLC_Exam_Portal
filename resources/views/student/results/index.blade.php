@@ -83,7 +83,7 @@
         <div class="table-responsive">
             <table class="table mb-0" style="font-size:0.84rem">
                 <thead>
-                    <tr><th>Exam</th><th>Course</th><th>Score</th><th>%</th><th>Grade</th><th>Status</th><th>Date</th></tr>
+                    <tr><th>Exam</th><th>Course</th><th>Score</th><th>%</th><th>Status</th><th>Date</th></tr>
                 </thead>
                 <tbody>
                     @forelse($results as $r)
@@ -103,12 +103,9 @@
                             </div>
                         </td>
                         <td>
-                            <span class="badge" style="background:var(--royal-light,#ede9fe);color:var(--royal,#3730a3)">
-                                {{ $r->grade ?? '—' }}
-                            </span>
-                        </td>
-                        <td>
-                            @if($r->is_passed)
+                            @if($r->isDisqualified())
+                                <span class="badge bg-warning text-dark">Failed (Cheating)</span>
+                            @elseif($r->is_passed)
                                 <span class="badge bg-success">Passed</span>
                             @else
                                 <span class="badge bg-danger">Failed</span>
@@ -144,26 +141,21 @@
                 <span class="badge" style="background:var(--royal,#3730a3);color:#fff">{{ $h['record']->academicYear->name ?? '—' }}</span>
                 <span class="badge bg-secondary">{{ $h['record']->yearLevel->name ?? '—' }}</span>
                 <span class="badge bg-light text-dark">Sem {{ $h['record']->semester }}</span>
-                @if(isset($h['transcript']) && $h['transcript'])
-                <span class="badge bg-info text-dark">GPA {{ number_format($h['transcript']->gpa, 2) }}</span>
-                <span class="badge {{ $h['transcript']->is_passed ? 'bg-success' : 'bg-danger' }}">
-                    {{ $h['transcript']->is_passed ? 'Promoted' : 'Not Promoted' }}
-                </span>
-                @endif
             </div>
             @if($h['results']->count())
             <div class="table-responsive">
                 <table class="table table-sm mb-0" style="font-size:0.79rem">
-                    <thead><tr><th>Exam</th><th>Score</th><th>%</th><th>Grade</th><th>Status</th></tr></thead>
+                    <thead><tr><th>Exam</th><th>Score</th><th>%</th><th>Status</th></tr></thead>
                     <tbody>
                         @foreach($h['results'] as $er)
                         <tr>
                             <td>{{ $er->exam->title ?? '—' }}</td>
                             <td>{{ $er->obtained_marks }}/{{ $er->total_marks }}</td>
                             <td>{{ $er->percentage }}%</td>
-                            <td>{{ $er->grade }}</td>
                             <td>
-                                @if($er->is_passed)
+                                @if($er->isDisqualified())
+                                    <span class="badge bg-warning text-dark" style="font-size:0.65rem">Failed (Cheating)</span>
+                                @elseif($er->is_passed)
                                     <span class="badge bg-success" style="font-size:0.65rem">Passed</span>
                                 @else
                                     <span class="badge bg-danger" style="font-size:0.65rem">Failed</span>

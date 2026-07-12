@@ -273,10 +273,23 @@
       data-save-url="{{ route('student.exam.save', $attempt) }}"
       data-violation-url="{{ route('student.exam.violation', $attempt) }}"
       data-submit-url="{{ route('student.exam.submit', $attempt) }}"
-      data-ends-at="{{ $endsAt }}">
+      data-disconnect-url="{{ route('student.exam.disconnect', $attempt) }}"
+      data-ends-at="{{ $endsAt }}"
+      data-policy-fullscreen="{{ $securityPolicy['fullscreen_detection_enabled'] ? '1' : '0' }}"
+      data-policy-blur="{{ $securityPolicy['blur_detection_enabled'] ? '1' : '0' }}"
+      data-policy-tab-switch="{{ $securityPolicy['tab_switch_detection_enabled'] ? '1' : '0' }}"
+      data-policy-right-click="{{ $securityPolicy['right_click_blocking_enabled'] ? '1' : '0' }}"
+      data-policy-copy="{{ $securityPolicy['copy_detection_enabled'] ? '1' : '0' }}"
+      data-policy-paste="{{ $securityPolicy['paste_detection_enabled'] ? '1' : '0' }}"
+      data-policy-devtools="{{ $securityPolicy['devtools_detection_enabled'] ? '1' : '0' }}"
+      data-policy-keyboard="{{ $securityPolicy['keyboard_shortcut_detection_enabled'] ? '1' : '0' }}">
 
 {{-- Fullscreen gate --}}
-<div class="fs-modal-overlay" id="fsOverlay">
+@php
+    // Check if this is a resumed exam (has saved answers)
+    $hasAnswers = $savedAnswers->isNotEmpty();
+@endphp
+<div class="fs-modal-overlay" id="fsOverlay" @if($hasAnswers) style="display:none" @endif>
     <div class="fs-modal-box">
         <div class="fs-modal-icon"><i class="bi bi-fullscreen"></i></div>
         <h4>Ready to Begin?</h4>

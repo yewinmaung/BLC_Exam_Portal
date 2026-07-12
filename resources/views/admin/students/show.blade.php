@@ -38,9 +38,6 @@
                 <a href="{{ route('admin.results.student', $student) }}" class="btn btn-sm btn-outline-primary" title="View Results">
                     <i class="bi bi-bar-chart-line"></i>
                 </a>
-                <a href="{{ route('admin.academic.transcripts.show', $student) }}" class="btn btn-sm btn-outline-secondary" title="Transcript">
-                    <i class="bi bi-file-earmark-text"></i>
-                </a>
                 <form action="{{ route('admin.students.destroy', $student) }}" method="POST"
                       onsubmit="return confirm('Permanently delete {{ addslashes($student->name) }}?')">
                     @csrf @method('DELETE')
@@ -59,7 +56,15 @@
                     <div style="font-weight:600;font-size:0.875rem">{{ $yr->academicYear->name }}</div>
                     <div class="text-muted small">{{ $yr->yearLevel->name }} · Sem {{ $yr->semester }}</div>
                     @if($yr->department)<div class="text-muted small">{{ $yr->department }}</div>@endif
-                    @if($yr->gpa)<div><span class="badge" style="background:#f0fdf4;color:#166534;font-weight:700">GPA: {{ $yr->gpa }}</span></div>@endif
+                    @if($yr->major)
+                    <div class="text-muted small">
+                        <i class="bi bi-collection me-1"></i>
+                        <span class="badge" style="background:#eff6ff;color:#1d4ed8;font-size:0.68rem;font-weight:700">
+                            {{ \App\Models\Major::codeFromLabel($yr->major) }}
+                        </span>
+                    </div>
+                    @endif
+                    @if($yr->gpa)<div><span class="badge" style="background:#f0fdf4;color:#166534;font-weight:700">{{ number_format($yr->gpa, 2) }} GPA</span></div>@endif
                     <span class="status-pill status-{{ $yr->status === 'active' ? 'approved' : ($yr->status === 'promoted' ? 'published' : 'closed') }}" style="font-size:0.68rem;margin-top:4px">
                         {{ ucfirst($yr->status) }}
                     </span>
