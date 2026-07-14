@@ -49,6 +49,8 @@ Route::middleware(['auth', 'exam.session'])->group(function () {
         Route::get('exams', [AdminExamController::class, 'index'])->name('exams.index');
         Route::get('exams/{exam}', [AdminExamController::class, 'show'])->name('exams.show');
         Route::get('exams/{exam}/results', [AdminExamController::class, 'results'])->name('exams.results');
+        Route::get('exams/{exam}/analytics', [AdminExamController::class, 'analytics'])->name('exams.analytics');
+        Route::get('exams/{exam}/analytics/not-attempted', [AdminExamController::class, 'analyticsNotAttempted'])->name('exams.analytics.not-attempted');
         Route::post('exams/{exam}/approve', [AdminExamController::class, 'approve'])->name('exams.approve');
         Route::post('exams/{exam}/schedule', [AdminExamController::class, 'schedule'])->name('exams.schedule');
         Route::put('exams/{exam}/schedule/{schedule}', [AdminExamController::class, 'updateSchedule'])->name('exams.schedule.update');
@@ -82,12 +84,7 @@ Route::middleware(['auth', 'exam.session'])->group(function () {
             Route::post('test',                                                     [\App\Http\Controllers\Admin\EmailController::class, 'sendTestEmail'])->name('test.send');
         });
 
-        // ── New Re-Attempt System ──
-        Route::get('reattempts', [\App\Http\Controllers\Admin\ReAttemptController::class, 'index'])->name('reattempts.index');
-        Route::get('reattempts/{reattempt}', [\App\Http\Controllers\Admin\ReAttemptController::class, 'show'])->name('reattempts.show');
-        Route::post('reattempts/{reattempt}/approve', [\App\Http\Controllers\Admin\ReAttemptController::class, 'approve'])->name('reattempts.approve');
-        Route::post('reattempts/{reattempt}/reject', [\App\Http\Controllers\Admin\ReAttemptController::class, 'reject'])->name('reattempts.reject');
-        Route::put('reattempts/{reattempt}/window', [\App\Http\Controllers\Admin\ReAttemptController::class, 'updateWindow'])->name('reattempts.window.update');
+
 
         // ── Academic Year Management ──
         Route::resource('academic/years', \App\Http\Controllers\Admin\AcademicYearController::class)
@@ -132,15 +129,12 @@ Route::middleware(['auth', 'exam.session'])->group(function () {
         Route::delete('exams/{exam}/questions/{question}', [TeacherExamController::class, 'deleteQuestion'])->name('exams.questions.destroy');
         Route::post('exams/{exam}/submit', [TeacherExamController::class, 'submitForApproval'])->name('exams.submit');
         Route::get('exams/{exam}/results', [TeacherExamController::class, 'results'])->name('exams.results');
+        Route::get('exams/{exam}/analytics', [TeacherExamController::class, 'analytics'])->name('exams.analytics');
+        Route::get('exams/{exam}/analytics/not-attempted', [TeacherExamController::class, 'analyticsNotAttempted'])->name('exams.analytics.not-attempted');
         Route::post('exams/{exam}/import', [TeacherExamController::class, 'importQuestions'])->name('exams.import');
 
         // ── Result Reports ──
         Route::get('results', [\App\Http\Controllers\Teacher\ResultController::class, 'index'])->name('results.index');
-        Route::get('reattempts', [TeacherExamController::class, 'reattemptRequests'])->name('reattempts.index');
-        Route::get('reattempts/create', [TeacherExamController::class, 'reattemptCreate'])->name('reattempts.create');
-        Route::post('reattempts', [TeacherExamController::class, 'reattemptStore'])->name('reattempts.store');
-        Route::delete('reattempts/{reattempt}', [TeacherExamController::class, 'reattemptCancel'])->name('reattempts.cancel');
-        Route::post('reattempts/{reattempt}/send-to-admin', [TeacherExamController::class, 'reattemptSendToAdmin'])->name('reattempts.send_to_admin');
     });
 
     Route::prefix('student')->middleware('role:student')->name('student.')->group(function () {
@@ -154,9 +148,6 @@ Route::middleware(['auth', 'exam.session'])->group(function () {
         Route::post('attempt/{attempt}/violation', [ExamSessionController::class, 'violation'])->middleware('exam.active')->name('exam.violation');
         Route::post('attempt/{attempt}/disconnect', [ExamSessionController::class, 'disconnect'])->name('exam.disconnect');
         Route::post('attempt/{attempt}/submit', [ExamSessionController::class, 'submit'])->middleware('exam.active')->name('exam.submit');
-        Route::get('reattempts', [\App\Http\Controllers\Student\ReAttemptController::class, 'index'])->name('reattempts.index');
-        Route::get('reattempts/create/{exam}', [\App\Http\Controllers\Student\ReAttemptController::class, 'create'])->name('reattempts.create');
-        Route::post('reattempts', [\App\Http\Controllers\Student\ReAttemptController::class, 'store'])->name('reattempts.store');
 
         // ── My Results ──
         Route::get('results', [\App\Http\Controllers\Student\ResultController::class, 'index'])->name('results.index');

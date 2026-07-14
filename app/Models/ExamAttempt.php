@@ -108,8 +108,7 @@ class ExamAttempt extends Model
     }
 
     /**
-     * Attempt was rejected after review — student cannot continue or re-attempt
-     * through normal flow. A re-attempt request would be required separately.
+     * Attempt was rejected after admin review — student cannot continue through normal flow.
      */
     public function isRejected(): bool
     {

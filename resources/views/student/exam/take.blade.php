@@ -259,6 +259,62 @@
         }
         .fs-start-btn:hover { box-shadow: 0 6px 24px rgba(11,42,91,0.45); transform: translateY(-1px); }
 
+        /* Fullscreen recovery modal */
+        .fs-recovery-overlay {
+            display: none;
+            position: fixed; inset: 0; z-index: 10000;
+            background: rgba(7,29,64,0.94);
+            align-items: center; justify-content: center;
+        }
+        .fs-recovery-box {
+            background: #fff; border-radius: 20px;
+            padding: 2.25rem 2rem; text-align: center;
+            max-width: 400px; width: 90%;
+            box-shadow: 0 32px 80px rgba(0,0,0,0.45);
+        }
+        .fs-recovery-icon {
+            width: 68px; height: 68px; border-radius: 16px;
+            background: linear-gradient(135deg, #b45309, #d97706);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.9rem; color: #fff; margin: 0 auto 1.1rem;
+        }
+        .fs-recovery-box h4 {
+            font-weight: 800; color: #92400e; margin-bottom: 0.45rem;
+            font-size: 1.1rem;
+        }
+        .fs-recovery-box p {
+            font-size: 0.855rem; color: #6b7280;
+            margin-bottom: 1.1rem; line-height: 1.55;
+        }
+        .fs-recovery-countdown-wrap {
+            margin-bottom: 1.25rem;
+        }
+        .fs-recovery-countdown-num {
+            font-size: 2.75rem; font-weight: 900;
+            color: #dc2626; font-variant-numeric: tabular-nums;
+            line-height: 1;
+        }
+        .fs-recovery-countdown-label {
+            font-size: 0.75rem; color: #9ca3af; margin-top: 0.2rem;
+        }
+        .fs-recovery-progress-track {
+            width: 100%; height: 6px;
+            background: #fee2e2; border-radius: 3px;
+            overflow: hidden; margin-bottom: 1.4rem;
+        }
+        .fs-recovery-progress-bar {
+            height: 100%; background: #dc2626;
+            border-radius: 3px; transition: width 0.9s linear;
+        }
+        .fs-recovery-return-btn {
+            width: 100%; padding: 0.85rem;
+            background: linear-gradient(135deg, var(--navy-2), var(--navy-dark));
+            color: #fff; border: none; border-radius: 12px;
+            font-size: 0.95rem; font-weight: 700; cursor: pointer;
+            font-family: 'Inter', sans-serif;
+            box-shadow: 0 4px 16px rgba(11,42,91,0.3);
+            transition: all 0.2s;
+        }
         /* Responsive */
         @media (max-width: 768px) {
             .exam-layout { grid-template-columns: 1fr; padding-top: 68px; }
@@ -300,6 +356,29 @@
         </p>
         <button class="fs-start-btn" id="enterFullscreen">
             <i class="bi bi-play-fill me-2"></i>Start Exam
+        </button>
+    </div>
+</div>
+
+{{-- Fullscreen recovery modal (shown when student exits fullscreen during exam) --}}
+<div class="fs-recovery-overlay" id="fsRecoveryOverlay">
+    <div class="fs-recovery-box">
+        <div class="fs-recovery-icon"><i class="bi bi-fullscreen-exit"></i></div>
+        <h4>⚠️ Fullscreen Mode Exited</h4>
+        <p>
+            Fullscreen mode was exited. Please return to fullscreen within
+            <strong>10 seconds</strong> to continue.<br>
+            Failure will count as a warning.
+        </p>
+        <div class="fs-recovery-countdown-wrap">
+            <div class="fs-recovery-countdown-num" id="fsRecoveryCountdown">10</div>
+            <div class="fs-recovery-countdown-label">seconds remaining</div>
+        </div>
+        <div class="fs-recovery-progress-track">
+            <div class="fs-recovery-progress-bar" id="fsRecoveryBar" style="width:100%"></div>
+        </div>
+        <button class="fs-recovery-return-btn" id="fsRecoveryReturnBtn">
+            <i class="bi bi-fullscreen me-2"></i>Return to Fullscreen
         </button>
     </div>
 </div>

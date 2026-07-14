@@ -6,20 +6,17 @@
      *
      * Admin badge mapping:
      *   Exams nav     → 'exam' category  (exam_submitted, exam_approved, exam_published, …)
-     *   Re-Attempts   → 'reattempt' category
      *   Results       → 'result' category
      *   Cheating Logs → 'exam' category shares (security_warning, security_incident_high, cheating)
      */
     $adminBadges = auth()->check()
         ? \App\Models\UserNotification::unreadCountsByCategory(auth()->id())
-        : ['exam' => 0, 'result' => 0, 'reattempt' => 0, 'course' => 0, 'general' => 0];
+        : ['exam' => 0, 'result' => 0, 'course' => 0, 'general' => 0];
 
-    // Exams nav item = exam-category notifications
-    $examBadge       = $adminBadges['exam']      ?? 0;
-    $reattemptBadge  = $adminBadges['reattempt'] ?? 0;
-    $resultBadge     = $adminBadges['result']    ?? 0;
-    $courseBadge     = $adminBadges['course']    ?? 0;
-    $generalBadge    = $adminBadges['general']   ?? 0;
+    $examBadge    = $adminBadges['exam']    ?? 0;
+    $resultBadge  = $adminBadges['result']  ?? 0;
+    $courseBadge  = $adminBadges['course']  ?? 0;
+    $generalBadge = $adminBadges['general'] ?? 0;
 @endphp
 
 <nav class="nav flex-column gap-1">
@@ -97,17 +94,6 @@
     <a class="nav-link {{ request()->routeIs('admin.cheating-logs') ? 'active' : '' }}"
        href="{{ route('admin.cheating-logs') }}">
         <i class="bi bi-shield-exclamation"></i> Cheating Logs
-    </a>
-
-    {{-- Re-Attempt Requests — badge: 're_attempt_submitted' → 'reattempt' --}}
-    <a class="nav-link {{ request()->routeIs('admin.reattempts.*') ? 'active' : '' }}"
-       href="{{ route('admin.reattempts.index') }}">
-        <i class="bi bi-arrow-clockwise"></i> Re-Attempts
-        <span id="admin-badge-reattempt"
-              class="nav-badge ms-auto"
-              style="display:{{ $reattemptBadge > 0 ? 'inline-flex' : 'none' }}">
-            {{ $reattemptBadge > 99 ? '99+' : $reattemptBadge }}
-        </span>
     </a>
 
     {{-- Results — badge: 'result' category --}}

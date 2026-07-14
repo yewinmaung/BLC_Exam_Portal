@@ -35,9 +35,8 @@ class UserNotification extends Model
      * Maps every known notification type to a nav category.
      *
      * Categories used in the student sidebar:
-     *   'exam'    → Exams nav item and sub-items (results, re-attempts)
+     *   'exam'    → Exams nav item and sub-items
      *   'result'  → My Results sub-item
-     *   'reattempt' → Re-attempts nav item
      *   'course'  → My Courses nav item
      *   'general' → Global Notifications bell (fallback)
      */
@@ -67,13 +66,6 @@ class UserNotification extends Model
         'result_published'           => 'result',
         'exam_graded'                => 'result',
         'exam_result_released'       => 'result',
-
-        // ── Re-attempts ───────────────────────────────────────────────
-        're_attempt_submitted'       => 'reattempt',
-        're_attempt_approved'        => 'reattempt',
-        're_attempt_rejected'        => 'reattempt',
-        're_attempt_cancelled'       => 'reattempt',
-        're_attempt_window_updated'  => 'reattempt',
 
         // ── Courses / enrollment ──────────────────────────────────────
         'enrolled'                   => 'course',
@@ -123,7 +115,7 @@ class UserNotification extends Model
      * Never deletes records — only sets is_read = true.
      *
      * @param  int     $userId
-     * @param  string  $category  One of: 'exam', 'result', 'reattempt', 'course', 'general'
+     * @param  string  $category  One of: 'exam', 'result', 'course', 'general'
      */
     public static function markCategoryRead(int $userId, string $category): void
     {
@@ -156,16 +148,15 @@ class UserNotification extends Model
      * Categories with 0 unread are still included (value = 0).
      *
      * @param  int  $userId
-     * @return array{exam: int, result: int, reattempt: int, course: int, general: int}
+     * @return array{exam: int, result: int, course: int, general: int}
      */
     public static function unreadCountsByCategory(int $userId): array
     {
         $counts = [
-            'exam'      => 0,
-            'result'    => 0,
-            'reattempt' => 0,
-            'course'    => 0,
-            'general'   => 0,
+            'exam'    => 0,
+            'result'  => 0,
+            'course'  => 0,
+            'general' => 0,
         ];
 
         // Single query — group by type, filter to unread

@@ -88,6 +88,96 @@ class ExamController extends Controller
         return view('admin.exams.results', compact('exam', 'results', 'absentStudents', 'stats'));
     }
 
+    // ── Exam Analytics ─────────────────────────────────────────────────
+
+    /**
+     * Exam analytics summary.
+     * Counts are derived from exam_attempts and enrollments — no new tables.
+     *
+     * Definitions:
+     *   Total Students  — distinct enrolled students for the exam's course
+     *   Completed       — attempts with status = 'submitted'
+     *   In Progress     — attempts with status = 'in_progress'
+     *   Terminated      — attempts with status IN (terminated, suspicious,
+     *                     terminated_pending_review, rejected)
+     *   Not Attempted   — enrolled students with zero attempts on this exam
+     *   Passed          — submitted attempts where the result is_passed = true
+     *   Failed          — submitted attempts where the result is_passed = false
+     */
+    public function analytics(Exam $exam)
+    {
+        $exam->load(['course', 'teacher', 'latestSchedule']);
+
+        // ── Enrolled students ─────────────────────────────────────────────
+        $enrolledIds = $exam->course->enrollments()->pluck('student_id');
+        $totalStudents = $enrolledIds->count();
+
+        // ── Attempts keyed by status ──────────────────────────────────────
+        // Take only the most recent attempt per student (attempt_number MAX).
+        $attempts = \App\Models\ExamAttempt::where('exam_id', $exam->id)
+            ->whereIn('student_id', $enrolledIds)
+            ->select('student_id', 'status', 'id')
+            ->orderByDesc('attempt_number')
+            ->get()
+            ->unique('student_id'); // keep only latest attempt per student
+
+        $attemptedIds = $attempts->pluck('student_id');
+
+        $completed   = $attempts->where('status', 'submitted')->count();
+        $inProgress  = $attempts->where('status', 'in_progress')->count();
+        $terminated  = $attempts->whereIn('status', [
+            'terminated', 'suspicious', 'terminated_pending_review', 'rejected',
+        ])->count();
+        $notAttempted = $enrolledIds->diff($attemptedIds)->count();
+
+        // ── Pass / Fail from results (only for submitted attempts) ─────────
+        $submittedAttemptIds = $attempts->where('status', 'submitted')->pluck('id');
+        $passed = \App\Models\Result::where('exam_id', $exam->id)
+            ->whereIn('attempt_id', $submittedAttemptIds)
+            ->where('is_passed', true)
+            ->count();
+        $failed = \App\Models\Result::where('exam_id', $exam->id)
+            ->whereIn('attempt_id', $submittedAttemptIds)
+            ->where('is_passed', false)
+            ->count();
+
+        $stats = compact(
+            'totalStudents', 'completed', 'inProgress',
+            'terminated', 'notAttempted', 'passed', 'failed'
+        );
+
+        return view('admin.exams.analytics', compact('exam', 'stats'));
+    }
+
+    /**
+     * Detail view: students who have NOT attempted this exam yet.
+     */
+    public function analyticsNotAttempted(Exam $exam)
+    {
+        $exam->load(['course', 'teacher']);
+
+        $enrolledIds    = $exam->course->enrollments()->pluck('student_id');
+        $attemptedIds   = \App\Models\ExamAttempt::where('exam_id', $exam->id)
+            ->whereIn('student_id', $enrolledIds)
+            ->pluck('student_id')
+            ->unique();
+
+        $notAttemptedIds = $enrolledIds->diff($attemptedIds);
+
+        $students = \App\Models\User::whereIn('id', $notAttemptedIds)
+            ->orderBy('name')
+            ->get(['id', 'name', 'email']);
+
+        return view('shared.exams.analytics-not-attempted', [
+            'exam'        => $exam,
+            'students'    => $students,
+            'backRoute'   => route('admin.exams.analytics', $exam),
+            'sidebarView' => 'partials.admin-sidebar',
+            'breadcrumbRole' => 'Admin',
+            'breadcrumbRoleUrl' => route('admin.dashboard'),
+        ]);
+    }
+
     public function approve(Exam $exam)
     {
         if ($exam->status !== 'pending_approval') {

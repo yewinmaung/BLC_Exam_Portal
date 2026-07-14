@@ -431,20 +431,18 @@
         .then(r => r.json())
         .then(counts => {
             // ── Student sidebar badges ────────────────────────────────────
-            // exam total on student Exams nav = exam + result + reattempt
-            const examTotal = (counts.exam || 0) + (counts.result || 0) + (counts.reattempt || 0);
-            setNavBadge('nav-badge-exam',      examTotal);
-            setNavBadge('nav-badge-result',    counts.result    || 0);
-            setNavBadge('nav-badge-reattempt', counts.reattempt || 0);
-            setNavBadge('nav-badge-course',    counts.course    || 0);
-            setNavBadge('nav-badge-general',   counts.general   || 0);
+            // exam total on student Exams nav = exam + result
+            const examTotal = (counts.exam || 0) + (counts.result || 0);
+            setNavBadge('nav-badge-exam',    examTotal);
+            setNavBadge('nav-badge-result',  counts.result  || 0);
+            setNavBadge('nav-badge-course',  counts.course  || 0);
+            setNavBadge('nav-badge-general', counts.general || 0);
 
             // ── Admin sidebar badges (same IDs pattern, prefixed admin-) ──
-            setNavBadge('admin-badge-exam',      counts.exam      || 0);
-            setNavBadge('admin-badge-reattempt', counts.reattempt || 0);
-            setNavBadge('admin-badge-result',    counts.result    || 0);
-            setNavBadge('admin-badge-course',    counts.course    || 0);
-            setNavBadge('admin-badge-general',   counts.general   || 0);
+            setNavBadge('admin-badge-exam',    counts.exam    || 0);
+            setNavBadge('admin-badge-result',  counts.result  || 0);
+            setNavBadge('admin-badge-course',  counts.course  || 0);
+            setNavBadge('admin-badge-general', counts.general || 0);
         })
         .catch(() => {});
     }

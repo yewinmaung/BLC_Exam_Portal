@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\Exam;
 use App\Models\ExamAttempt;
 use App\Models\ExamSchedule;
-use App\Models\ReAttemptRequest;
 use App\Models\User;
 use Carbon\Carbon;
 
@@ -47,18 +46,7 @@ class ExamAccessService
 
         $now = Carbon::now();
 
-        $inMainWindow = $now->between($schedule->starts_at, $schedule->ends_at);
-
-        $inReattemptWindow = ReAttemptRequest::where('student_id', $user->id)
-            ->where('exam_id', $exam->id)
-            ->where('status', 'approved')
-            ->whereNotNull('re_attempt_start_at')
-            ->whereNotNull('re_attempt_end_at')
-            ->where('re_attempt_start_at', '<=', $now)
-            ->where('re_attempt_end_at', '>=', $now)
-            ->exists();
-
-        return $inMainWindow || $inReattemptWindow;
+        return $now->between($schedule->starts_at, $schedule->ends_at);
     }
 
     public function canViewCorrectAnswers(User $user, Exam $exam): bool
@@ -116,13 +104,8 @@ class ExamAccessService
             return false;
         }
 
-        // Business rule: default allowed attempts = 1, max attempts = 3
-        $baseAllowed = max(1, (int) ($schedule->attempt_limit ?? 1));
-        $approvedReattempts = ReAttemptRequest::where('student_id', $user->id)
-            ->where('exam_id', $exam->id)
-            ->where('status', 'approved')
-            ->count();
-        $allowedAttempts = min(3, $baseAllowed + $approvedReattempts);
+        // Attempt limit is set per schedule; default is 1
+        $allowedAttempts = max(1, (int) ($schedule->attempt_limit ?? 1));
 
         $usedAttempts = ExamAttempt::where('exam_id', $exam->id)
             ->where('student_id', $user->id)
@@ -133,22 +116,7 @@ class ExamAccessService
             return false;
         }
 
-        // If there is an approved re-attempt window active, allow access even if the main schedule ended/missed.
-        $now = Carbon::now();
-        $inReattemptWindow = ReAttemptRequest::where('student_id', $user->id)
-            ->where('exam_id', $exam->id)
-            ->where('status', 'approved')
-            ->whereNotNull('re_attempt_start_at')
-            ->whereNotNull('re_attempt_end_at')
-            ->where('re_attempt_start_at', '<=', $now)
-            ->where('re_attempt_end_at', '>=', $now)
-            ->exists();
-
-        if ($inReattemptWindow) {
-            return true;
-        }
-
-        // Otherwise, student can only take during the main schedule window.
+        // Student can only take during the main schedule window
         return $this->isScheduleActive($schedule);
     }
 

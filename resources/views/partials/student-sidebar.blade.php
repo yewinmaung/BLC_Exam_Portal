@@ -7,17 +7,15 @@
      */
     $navBadges = auth()->check()
         ? \App\Models\UserNotification::unreadCountsByCategory(auth()->id())
-        : ['exam' => 0, 'result' => 0, 'reattempt' => 0, 'course' => 0, 'general' => 0];
+        : ['exam' => 0, 'result' => 0, 'course' => 0, 'general' => 0];
 
-    // Exams nav total = exam + result + reattempt
+    // Exams nav total = exam + result
     $examNavTotal = ($navBadges['exam'] ?? 0)
-                  + ($navBadges['result'] ?? 0)
-                  + ($navBadges['reattempt'] ?? 0);
+                  + ($navBadges['result'] ?? 0);
 
     $inExamsSection = request()->routeIs('student.exams.*')
                    || request()->routeIs('student.exam.*')
-                   || request()->routeIs('student.results.*')
-                   || request()->routeIs('student.reattempts.*');
+                   || request()->routeIs('student.results.*');
 @endphp
 
 <nav class="nav flex-column gap-1">
@@ -40,7 +38,7 @@
     </a>
 
     {{-- ── Exams group ──────────────────────────────────────────────── --}}
-    {{-- The group header shows the sum of exam + result + reattempt unread. --}}
+    {{-- The group header shows the sum of exam + result unread. --}}
     {{-- Sub-items are always visible when the user is in any exams section. --}}
     <div class="nav-group {{ $inExamsSection ? 'open' : '' }}">
 
@@ -68,16 +66,6 @@
                       class="nav-badge ms-auto"
                       style="display:{{ ($navBadges['result'] ?? 0) > 0 ? 'inline-flex' : 'none' }}">
                     {{ ($navBadges['result'] ?? 0) > 99 ? '99+' : ($navBadges['result'] ?? 0) }}
-                </span>
-            </a>
-
-            <a class="nav-link nav-sub-link {{ request()->routeIs('student.reattempts.*') ? 'active' : '' }}"
-               href="{{ route('student.reattempts.index') }}">
-                <i class="bi bi-arrow-repeat"></i> Re-attempts
-                <span id="nav-badge-reattempt"
-                      class="nav-badge ms-auto"
-                      style="display:{{ ($navBadges['reattempt'] ?? 0) > 0 ? 'inline-flex' : 'none' }}">
-                    {{ ($navBadges['reattempt'] ?? 0) > 99 ? '99+' : ($navBadges['reattempt'] ?? 0) }}
                 </span>
             </a>
 

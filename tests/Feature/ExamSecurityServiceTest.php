@@ -10,7 +10,6 @@ use App\Models\Exam;
 use App\Models\ExamAttempt;
 use App\Models\ExamSchedule;
 use App\Models\Role;
-use App\Models\SecuritySetting;
 use App\Models\User;
 use App\Models\UserNotification;
 use App\Services\ExamSecurityService;
@@ -243,7 +242,7 @@ class ExamSecurityServiceTest extends TestCase
 
         // DB state is authoritative — these assertions confirm the transaction committed.
         $fresh = $attempt->fresh();
-        $this->assertEquals('terminated_pending_review', $fresh->status);
+        $this->assertEquals('terminated', $fresh->status);
         $this->assertNotNull($fresh->terminated_at);
         $this->assertEquals(3, $fresh->warning_count);
 
@@ -317,7 +316,7 @@ class ExamSecurityServiceTest extends TestCase
                         ->count()
         );
 
-        $this->assertEquals('terminated_pending_review', $attempt->fresh()->status);
+        $this->assertEquals('terminated', $attempt->fresh()->status);
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -644,34 +643,34 @@ class ExamSecurityServiceTest extends TestCase
             // Expected
         }
 
-        // Attempt must not be in terminated_pending_review — rollback succeeded
+        // Attempt must not be in terminated — rollback succeeded
         $fresh = $attempt->fresh();
-        $this->assertNotEquals('terminated_pending_review', $fresh->status);
+        $this->assertNotEquals('terminated', $fresh->status);
         $this->assertEquals(2, $fresh->warning_count); // not incremented past the throw
     }
 
     // ══════════════════════════════════════════════════════════════════════
-    //  10. Configurable max_warnings
+    //  10. Max warnings is a fixed constant of 3
     // ══════════════════════════════════════════════════════════════════════
 
     /** @test */
-    public function max_warnings_is_read_from_config_not_hardcoded(): void
+    public function max_warnings_constant_is_three(): void
     {
-        SecuritySetting::set('max_warnings', 2);
+        // ExamSecurityService::maxWarnings() returns the fixed constant MAX_VIOLATIONS = 3.
+        // Termination is always unconditional at warning 3 — not configurable via settings.
+        $this->assertEquals(3, ExamSecurityService::maxWarnings());
 
-        $attempt = $this->makeAttempt(['warning_count' => 1]); // 1 warning, max is now 2
+        // Verify: at warning_count = 2 (one below the cap), the third violation terminates.
+        $attempt = $this->makeAttempt(['warning_count' => 2]);
         $service = $this->makeService();
 
         $result = $service->recordViolation(
             $attempt->fresh(), 'tab_switch', null, $this->clientFingerprint(), '127.0.0.1'
         );
 
-        // With max=2, warning_count 1→2 should trigger Tier 3 (lock)
         $this->assertTrue($result['terminated']);
-        $this->assertEquals('terminated_pending_review', $attempt->fresh()->status);
-
-        // Restore default
-        SecuritySetting::set('max_warnings', 3);
+        $this->assertEquals(3, $result['warning_count']);
+        $this->assertEquals('terminated', $attempt->fresh()->status);
     }
 
     // ══════════════════════════════════════════════════════════════════════

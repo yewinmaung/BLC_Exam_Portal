@@ -374,12 +374,6 @@
                     </div>
                 </div>
                 @endif
-
-                @if($attempts->count() === 0)
-                <a href="{{ route('student.reattempts.create', $exam) }}" class="btn btn-outline-primary w-100 mt-3">
-                    <i class="bi bi-arrow-repeat me-1"></i> Request Re-Attempt (Missed Exam)
-                </a>
-                @endif
             </div>
         </div>
 

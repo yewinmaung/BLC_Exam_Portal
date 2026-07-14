@@ -68,7 +68,7 @@ class NotificationController extends Controller
      * Return unread counts broken down by nav category.
      * Used by the sidebar to render per-item badges.
      *
-     * Response: { "exam": 3, "result": 1, "reattempt": 0, "course": 2, "general": 0 }
+     * Response: { "exam": 3, "result": 1, "course": 2, "general": 0 }
      */
     public function unreadCountsByCategory()
     {

@@ -111,9 +111,73 @@
         if (examStarted) reportViolation('window_blur', 'Window lost focus');
     }
 
+    /* ─────────────────────────────────────────────────────────────────────
+       Fullscreen recovery — 10-second grace window
+       When the student exits fullscreen:
+        1. Show the recovery modal with a live countdown.
+        2. If they re-enter fullscreen within 10 s → cancel silently (no violation).
+        3. If the timer expires → send the violation through the normal flow.
+    ───────────────────────────────────────────────────────────────────── */
+    const FS_RECOVERY_SECONDS = 10;
+    let fsRecoveryTimer   = null;   // setInterval handle for the countdown
+    let fsRecoveryPending = false;  // true while the grace window is open
+
+    const fsRecoveryOverlay   = document.getElementById('fsRecoveryOverlay');
+    const fsRecoveryCountdown = document.getElementById('fsRecoveryCountdown');
+    const fsRecoveryBar       = document.getElementById('fsRecoveryBar');
+
+    function showFsRecoveryModal() {
+        if (!fsRecoveryOverlay) return;
+        let remaining = FS_RECOVERY_SECONDS;
+        if (fsRecoveryCountdown) fsRecoveryCountdown.textContent = remaining;
+        if (fsRecoveryBar)       fsRecoveryBar.style.width = '100%';
+        fsRecoveryOverlay.style.display = 'flex';
+        fsRecoveryPending = true;
+
+        fsRecoveryTimer = setInterval(() => {
+            remaining -= 1;
+            const pct = Math.max(0, (remaining / FS_RECOVERY_SECONDS) * 100);
+            if (fsRecoveryCountdown) fsRecoveryCountdown.textContent = remaining;
+            if (fsRecoveryBar)       fsRecoveryBar.style.width = pct + '%';
+
+            if (remaining <= 0) {
+                clearInterval(fsRecoveryTimer);
+                fsRecoveryTimer   = null;
+                fsRecoveryPending = false;
+                hideFsRecoveryModal();
+                // Grace period expired — count as a real violation.
+                reportViolation('fullscreen_exit', 'Exited fullscreen');
+            }
+        }, 1000);
+    }
+
+    function hideFsRecoveryModal() {
+        if (fsRecoveryOverlay) fsRecoveryOverlay.style.display = 'none';
+    }
+
+    function cancelFsRecovery() {
+        if (fsRecoveryTimer) {
+            clearInterval(fsRecoveryTimer);
+            fsRecoveryTimer = null;
+        }
+        fsRecoveryPending = false;
+        hideFsRecoveryModal();
+        // Student returned in time — no violation recorded.
+    }
+
     function onFullscreenChange() {
-        if (!document.fullscreenElement && examStarted) {
-            reportViolation('fullscreen_exit', 'Exited fullscreen');
+        if (!examStarted) return;
+
+        if (!document.fullscreenElement) {
+            // Student exited fullscreen — start the grace window.
+            if (!fsRecoveryPending) {
+                showFsRecoveryModal();
+            }
+        } else {
+            // Student is back in fullscreen.
+            if (fsRecoveryPending) {
+                cancelFsRecovery();  // Cancel silently — no warning_count increase.
+            }
         }
     }
 
@@ -205,7 +269,13 @@
 
         const lockMessage = message || 'Your exam has been locked due to repeated security violations.';
 
-        // ── 1. Stop all timers ─────────────────────────────────────────
+        // ── 1. Stop all timers (including any active FS recovery timer) ──
+        if (fsRecoveryTimer) {
+            clearInterval(fsRecoveryTimer);
+            fsRecoveryTimer   = null;
+            fsRecoveryPending = false;
+        }
+        hideFsRecoveryModal();
         intervals.forEach(clearInterval);
         timeouts.forEach(clearTimeout);
 
@@ -238,7 +308,7 @@
         const overlay = document.createElement('div');
         overlay.id = 'examLockedOverlay';
         overlay.style.cssText = [
-            'position:fixed', 'inset:0', 'z-index:9999',
+            'position:fixed', 'inset:0', 'z-index:10001',
             'background:rgba(7,29,64,0.97)',
             'display:flex', 'align-items:center', 'justify-content:center',
             'color:#fff', 'text-align:center', 'padding:2rem',
@@ -456,4 +526,15 @@
         }
     }
     showQuestion(startIndex);
+
+    // ── Fullscreen recovery modal: "Return to Fullscreen" button ──
+    document.getElementById('fsRecoveryReturnBtn')?.addEventListener('click', async () => {
+        try {
+            await document.documentElement.requestFullscreen();
+        } catch (_e) {
+            // If the browser blocks the request, do nothing — the timer will expire naturally.
+        }
+        // The fullscreenchange event will fire and call cancelFsRecovery() automatically.
+        // No need to call it here to avoid double-cancellation.
+    });
 })();

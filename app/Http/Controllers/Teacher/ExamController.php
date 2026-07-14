@@ -314,118 +314,147 @@ class ExamController extends Controller
     public function results(Request $request, Exam $exam)
     {
         $this->authorizeTeacher($exam);
-        
-        // Get filter parameter
+
         $filter = $request->get('filter', 'all');
         $search = $request->get('search', '');
-        
+
         // Base query
         $query = $exam->results()->with(['student', 'attempt.cheatingLogs']);
-        
+
         // Apply search
         if ($search) {
-            $query->whereHas('student', function($q) use ($search) {
+            $query->whereHas('student', function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
                   ->orWhere('email', 'like', "%{$search}%");
             });
         }
-        
+
         // Apply filters
         switch ($filter) {
             case 'failed':
                 $query->where('is_passed', false)
-                      ->whereDoesntHave('attempt', function($q) {
+                      ->whereDoesntHave('attempt', function ($q) {
                           $q->whereIn('status', ['terminated', 'suspicious', 'terminated_pending_review']);
                       });
                 break;
-                
+
             case 'incomplete':
                 // Students enrolled but no result
-                $enrolledStudentIds = $exam->course->enrollments()->pluck('student_id');
+                $enrolledStudentIds  = $exam->course->enrollments()->pluck('student_id');
                 $completedStudentIds = $exam->results()->pluck('student_id');
-                $incompleteIds = $enrolledStudentIds->diff($completedStudentIds);
-                
+                $incompleteIds       = $enrolledStudentIds->diff($completedStudentIds);
+
                 if ($incompleteIds->isEmpty()) {
-                    $query->whereRaw('1 = 0'); // Return empty
+                    $query->whereRaw('1 = 0');
                 } else {
-                    // Return placeholder results for incomplete students
                     $results = collect();
                     foreach ($incompleteIds as $studentId) {
                         $student = User::find($studentId);
                         if ($student) {
-                            $results->push((object)[
-                                'student' => $student,
+                            $results->push((object) [
+                                'student'        => $student,
                                 'obtained_marks' => 0,
-                                'total_marks' => $exam->total_marks,
-                                'percentage' => 0,
-                                'is_passed' => false,
-                                'is_incomplete' => true,
-                                'attempt' => null,
+                                'total_marks'    => $exam->total_marks,
+                                'percentage'     => 0,
+                                'is_passed'      => false,
+                                'is_incomplete'  => true,
+                                'attempt'        => null,
                             ]);
                         }
                     }
                     return view('teacher.exams.results', compact('exam', 'results', 'filter', 'search'));
                 }
                 break;
-                
-            case 'eligible':
-                // Failed honestly + incomplete students (exclude cheating/terminated)
-                $query->where(function($q) {
-                    $q->where('is_passed', false)
-                      ->whereDoesntHave('attempt', function($q2) {
-                          $q2->whereIn('status', ['terminated', 'suspicious', 'terminated_pending_review']);
-                      });
-                });
-                break;
-                
-            case 'requested':
-                $query->whereHas('student', function($q) use ($exam) {
-                    $q->whereHas('reattemptRequests', function($q2) use ($exam) {
-                        $q2->where('exam_id', $exam->id)
-                           ->whereIn('status', ['pending', 'approved']);
-                    });
-                });
-                break;
-                
+
             case 'all':
             default:
-                // No additional filter
                 break;
         }
-        
+
         $results = $query->latest()->get();
-        
-        // Add incomplete students for eligible filter
-        if ($filter === 'eligible') {
-            $enrolledStudentIds = $exam->course->enrollments()->pluck('student_id');
-            $completedStudentIds = $exam->results()->pluck('student_id');
-            $incompleteIds = $enrolledStudentIds->diff($completedStudentIds);
-            
-            foreach ($incompleteIds as $studentId) {
-                $student = User::find($studentId);
-                if ($student) {
-                    // Check no pending/approved request
-                    $hasRequest = \App\Models\ReAttemptRequest::where('exam_id', $exam->id)
-                        ->where('student_id', $studentId)
-                        ->whereIn('status', ['pending', 'approved'])
-                        ->exists();
-                    
-                    if (!$hasRequest) {
-                        $results->push((object)[
-                            'student' => $student,
-                            'obtained_marks' => 0,
-                            'total_marks' => $exam->total_marks,
-                            'percentage' => 0,
-                            'is_passed' => false,
-                            'is_incomplete' => true,
-                            'attempt' => null,
-                        ]);
-                    }
-                }
-            }
-        }
 
         return view('teacher.exams.results', compact('exam', 'results', 'filter', 'search'));
+    }
+
+    // ── Exam Analytics ─────────────────────────────────────────────────
+
+    /**
+     * Exam analytics summary — scoped to exams owned by this teacher.
+     * Same definitions as Admin\ExamController::analytics().
+     */
+    public function analytics(Exam $exam)
+    {
+        $this->authorizeTeacher($exam);
+        $exam->load(['course', 'teacher', 'latestSchedule']);
+
+        // ── Enrolled students ─────────────────────────────────────────────
+        $enrolledIds   = $exam->course->enrollments()->pluck('student_id');
+        $totalStudents = $enrolledIds->count();
+
+        // ── Attempts — latest per student ─────────────────────────────────
+        $attempts = \App\Models\ExamAttempt::where('exam_id', $exam->id)
+            ->whereIn('student_id', $enrolledIds)
+            ->select('student_id', 'status', 'id')
+            ->orderByDesc('attempt_number')
+            ->get()
+            ->unique('student_id');
+
+        $attemptedIds = $attempts->pluck('student_id');
+
+        $completed    = $attempts->where('status', 'submitted')->count();
+        $inProgress   = $attempts->where('status', 'in_progress')->count();
+        $terminated   = $attempts->whereIn('status', [
+            'terminated', 'suspicious', 'terminated_pending_review', 'rejected',
+        ])->count();
+        $notAttempted = $enrolledIds->diff($attemptedIds)->count();
+
+        // ── Pass / Fail ────────────────────────────────────────────────────
+        $submittedAttemptIds = $attempts->where('status', 'submitted')->pluck('id');
+        $passed = \App\Models\Result::where('exam_id', $exam->id)
+            ->whereIn('attempt_id', $submittedAttemptIds)
+            ->where('is_passed', true)
+            ->count();
+        $failed = \App\Models\Result::where('exam_id', $exam->id)
+            ->whereIn('attempt_id', $submittedAttemptIds)
+            ->where('is_passed', false)
+            ->count();
+
+        $stats = compact(
+            'totalStudents', 'completed', 'inProgress',
+            'terminated', 'notAttempted', 'passed', 'failed'
+        );
+
+        return view('teacher.exams.analytics', compact('exam', 'stats'));
+    }
+
+    /**
+     * Detail view: students who have NOT attempted this exam yet (teacher-scoped).
+     */
+    public function analyticsNotAttempted(Exam $exam)
+    {
+        $this->authorizeTeacher($exam);
+        $exam->load(['course', 'teacher']);
+
+        $enrolledIds  = $exam->course->enrollments()->pluck('student_id');
+        $attemptedIds = \App\Models\ExamAttempt::where('exam_id', $exam->id)
+            ->whereIn('student_id', $enrolledIds)
+            ->pluck('student_id')
+            ->unique();
+
+        $notAttemptedIds = $enrolledIds->diff($attemptedIds);
+
+        $students = \App\Models\User::whereIn('id', $notAttemptedIds)
+            ->orderBy('name')
+            ->get(['id', 'name', 'email']);
+
+        return view('shared.exams.analytics-not-attempted', [
+            'exam'              => $exam,
+            'students'          => $students,
+            'backRoute'         => route('teacher.exams.analytics', $exam),
+            'sidebarView'       => 'partials.teacher-sidebar',
+            'breadcrumbRole'    => 'Teacher',
+            'breadcrumbRoleUrl' => route('teacher.dashboard'),
+        ]);
     }
 
     // ── Question Import ────────────────────────────────────────────
@@ -449,190 +478,6 @@ class ExamController extends Controller
         return back()->with('success', "{$count} question(s) imported successfully.");
     }
 
-    // ── Re-attempt request methods ─────────────────────────────
-
-    public function reattemptRequests()
-    {
-        $requests = \App\Models\ReAttemptRequest::with(['student', 'exam.course', 'approver'])
-            ->where('teacher_id', auth()->id())
-            ->latest()
-            ->paginate(20);
-
-        // Mark reattempt notifications as read when teacher opens Re-Attempts page
-        \App\Models\UserNotification::markCategoryRead(auth()->id(), 'reattempt');
-
-        return view('teacher.reattempts.index', compact('requests'));
-    }
-
-    public function reattemptSendToAdmin(\App\Models\ReAttemptRequest $reattempt)
-    {
-        if ($reattempt->teacher_id !== auth()->id()) {
-            abort(403);
-        }
-
-        $service = app(\App\Services\ReAttemptService::class);
-        $service->sendToAdmin($reattempt, auth()->user());
-
-        return back()->with('success', 'Request sent to admin.');
-    }
-
-    public function reattemptCreate()
-    {
-        $exams = Exam::where('teacher_id', auth()->id())
-            ->with('course')
-            ->orderBy('title')
-            ->get();
-        $students = User::whereHas('role', fn($q) => $q->where('slug', 'student'))
-            ->where('is_active', true)->orderBy('name')->get();
-
-        return view('teacher.reattempts.create', compact('exams', 'students'));
-    }
-
-    public function reattemptStore(Request $request)
-    {
-        $data = $request->validate([
-            'student_id' => 'nullable|exists:users,id',
-            'student_ids' => 'nullable|array',
-            'student_ids.*' => 'exists:users,id',
-            'exam_id'    => 'required|exists:exams,id',
-            'reason'     => 'required|string|max:1000',
-        ]);
-
-        // Ensure teacher owns the exam
-        $exam = Exam::where('id', $data['exam_id'])
-            ->where('teacher_id', auth()->id())
-            ->firstOrFail();
-
-        // Determine if single or bulk request
-        $studentIds = [];
-        if (!empty($data['student_ids'])) {
-            // Bulk request
-            $studentIds = $data['student_ids'];
-        } elseif (!empty($data['student_id'])) {
-            // Single request
-            $studentIds = [$data['student_id']];
-        } else {
-            return back()->withErrors(['error' => 'Please select at least one student.']);
-        }
-
-        $service = app(\App\Services\ReAttemptService::class);
-        $successCount = 0;
-        $skippedCount = 0;
-        $errors = [];
-
-        foreach ($studentIds as $studentId) {
-            // Check if student is eligible
-            $student = User::find($studentId);
-            if (!$student) {
-                $skippedCount++;
-                continue;
-            }
-
-            // Check for pending/approved requests
-            $exists = \App\Models\ReAttemptRequest::where('student_id', $studentId)
-                ->where('exam_id', $data['exam_id'])
-                ->whereIn('status', ['pending', 'approved'])
-                ->exists();
-
-            if ($exists) {
-                $skippedCount++;
-                $errors[] = "{$student->name} already has a pending or approved re-attempt request.";
-                continue;
-            }
-
-            // Check if student has cheating/terminated attempts
-            $hasCheatingAttempt = \App\Models\ExamAttempt::where('exam_id', $exam->id)
-                ->where('student_id', $studentId)
-                ->whereIn('status', ['terminated', 'suspicious', 'terminated_pending_review'])
-                ->exists();
-
-            if ($hasCheatingAttempt) {
-                $skippedCount++;
-                $errors[] = "{$student->name} has a security violation and cannot request re-attempt.";
-                continue;
-            }
-
-            // Create the request
-            try {
-                $service->createRequest(auth()->user(), $student, $exam, $data['reason']);
-                $successCount++;
-            } catch (\Exception $e) {
-                $skippedCount++;
-                $errors[] = "Failed to create request for {$student->name}: " . $e->getMessage();
-            }
-        }
-
-        // Build response message
-        $message = '';
-        if ($successCount > 0) {
-            $message = "Successfully submitted {$successCount} re-attempt request(s).";
-        }
-        if ($skippedCount > 0) {
-            $message .= " {$skippedCount} student(s) were skipped.";
-        }
-
-        if (!empty($errors) && count($errors) <= 5) {
-            // Show specific errors if not too many
-            $message .= "\n" . implode("\n", $errors);
-        }
-
-        if ($successCount > 0) {
-            return redirect()->route('teacher.reattempts.index')
-                ->with('success', $message);
-        } else {
-            return back()->withErrors(['error' => $message ?: 'No requests were created.']);
-        }
-    }
-
-    public function reattemptCancel(\App\Models\ReAttemptRequest $reattempt)
-    {
-        // Only the teacher who created it can cancel, and only if still pending
-        if ($reattempt->teacher_id !== auth()->id()) {
-            abort(403);
-        }
-
-        if (!$reattempt->isPending()) {
-            return back()->withErrors(['error' => 'Only pending requests can be cancelled.']);
-        }
-
-        \App\Models\ReAttemptLog::create([
-            'request_id' => $reattempt->id,
-            'action'     => 'cancelled',
-            'actor_id'   => auth()->id(),
-            'actor_role' => 'teacher',
-            'remarks'    => 'Cancelled by teacher',
-        ]);
-
-        $reattempt->delete();
-
-        return back()->with('success', 'Re-attempt request cancelled.');
-    }
-
-    public function requestReset(Request $request, Exam $exam)
-    {
-        $this->authorizeTeacher($exam);
-
-        $data = $request->validate([
-            'student_id' => 'required|exists:users,id',
-            'reason'     => 'nullable|string|max:1000',
-        ]);
-
-        // Prevent duplicate pending requests
-        $exists = \App\Models\ReAttemptRequest::where('student_id', $data['student_id'])
-            ->where('exam_id', $exam->id)
-            ->where('status', 'pending')
-            ->exists();
-
-        if ($exists) {
-            return back()->withErrors(['error' => 'A pending re-attempt request already exists for this student.']);
-        }
-
-        $student = User::findOrFail($data['student_id']);
-        $service = app(\App\Services\ReAttemptService::class);
-        $service->createRequest(auth()->user(), $student, $exam, $data['reason'] ?? 'Requested by teacher');
-
-        return back()->with('success', 'Re-attempt request sent to admin for approval.');
-    }
 
     private function notifyAdmins(string $type, string $title, string $message, string $link): void
     {
