@@ -19,7 +19,7 @@ class User extends Authenticatable implements MustVerifyEmail
 
     protected $fillable = [
         'name', 'email', 'password', 'role_id', 'is_active', 'phone', 'academic_year',
-        'exam_session_token', 'last_login_at',
+        'exam_session_token', 'last_login_at', 'profile_photo',
     ];
 
     protected $hidden = [
@@ -91,5 +91,18 @@ class User extends Authenticatable implements MustVerifyEmail
     public function hasRole(string $slug): bool
     {
         return $this->role?->slug === $slug;
+    }
+
+    /**
+     * Return the full URL to the user's profile photo, or null if none is set.
+     * The view falls back to the initials avatar when this returns null.
+     */
+    public function profilePhotoUrl(): ?string
+    {
+        if (!$this->profile_photo) {
+            return null;
+        }
+
+        return \Illuminate\Support\Facades\Storage::disk('public')->url($this->profile_photo);
     }
 }

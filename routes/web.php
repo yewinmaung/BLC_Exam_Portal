@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Admin\CheatingLogController;
 use App\Http\Controllers\Admin\CourseController as AdminCourseController;
 use App\Http\Controllers\Admin\ExamController as AdminExamController;
@@ -33,6 +34,13 @@ Route::middleware(['auth', 'exam.session'])->group(function () {
     Route::post('notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.read-all');
     Route::get('notifications/unread-count', [NotificationController::class, 'unreadCount'])->name('notifications.unread-count');
     Route::get('notifications/unread-by-category', [NotificationController::class, 'unreadCountsByCategory'])->name('notifications.unread-by-category');
+
+    // ── Shared profile routes (all authenticated roles) ──
+    Route::get('profile', [ProfileController::class, 'show'])->name('profile.show');
+    Route::post('profile/photo', [ProfileController::class, 'updatePhoto'])->name('profile.photo');
+    Route::post('profile/otp/request', [ProfileController::class, 'otpRequest'])->name('profile.otp.request');
+    Route::post('profile/otp/verify', [ProfileController::class, 'otpVerify'])->name('profile.otp.verify');
+    Route::post('profile/otp/resend', [ProfileController::class, 'otpResend'])->name('profile.otp.resend');
 
     Route::prefix('admin')->middleware('role:admin')->name('admin.')->group(function () {
         Route::get('dashboard', [DashboardController::class, 'admin'])->name('dashboard');

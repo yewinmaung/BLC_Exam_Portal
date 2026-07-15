@@ -27,6 +27,12 @@
         <i class="bi bi-speedometer2"></i> Dashboard
     </a>
 
+    {{-- My Profile --}}
+    <a class="nav-link {{ request()->routeIs('profile.show') ? 'active' : '' }}"
+       href="{{ route('profile.show') }}">
+        <i class="bi bi-person-circle"></i> My Profile
+    </a>
+
     {{-- Users --}}
     <a class="nav-link {{ request()->routeIs('admin.users.*') ? 'active' : '' }}"
        href="{{ route('admin.users.index') }}">

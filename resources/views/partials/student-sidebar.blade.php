@@ -26,6 +26,12 @@
         <i class="bi bi-speedometer2"></i> Dashboard
     </a>
 
+    {{-- My Profile --}}
+    <a class="nav-link {{ request()->routeIs('profile.show') ? 'active' : '' }}"
+       href="{{ route('profile.show') }}">
+        <i class="bi bi-person-circle"></i> My Profile
+    </a>
+
     {{-- My Courses — badge: 'course' category --}}
     <a class="nav-link {{ request()->routeIs('student.courses.*') ? 'active' : '' }}"
        href="{{ route('student.courses.index') }}">
