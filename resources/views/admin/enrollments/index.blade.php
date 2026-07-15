@@ -77,7 +77,7 @@
                         <input type="hidden" name="year" id="hiddenYear" value="{{ old('year', 1) }}">
                         <div class="form-text">Filters both the student list and available courses.</div>
                     </div>
-  {{--  Semester ── drives course list --}}
+                 {{--  Semester ── drives course list --}}
                     <div class="mb-3">
                         <label class="form-label fw-semibold">
                             Semester <span class="text-danger">*</span>
@@ -120,7 +120,7 @@
                         </div>
                         <div id="studentEmpty" class="text-center py-3 text-muted small">
                             <i class="bi bi-people d-block mb-1" style="font-size:1.4rem;opacity:0.35"></i>
-                            Select Academic Year &amp; Year Level to load students.
+                            Select Academic Year &amp; Semester &amp; Year Level to load students.
                         </div>
 
                         <input type="text" id="studentSearch" class="form-control mb-2"
@@ -389,7 +389,8 @@
                                     <form method="POST"
                                           action="{{ route('admin.enrollments.destroy', $e) }}"
                                           onsubmit="return confirm('Remove {{ addslashes($e->student->name ?? '') }} from {{ addslashes($e->course->title ?? '') }}?')">
-                                        @csrf @method('DELETE')
+                                        @csrf 
+                                        @method('DELETE')
                                         <button class="btn btn-sm enroll-del-btn" title="Remove enrollment"
                                                 style="width:30px;height:30px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:8px;border:1.5px solid #fecaca;color:#ef4444;background:#fff5f5;transition:all 0.15s">
                                             <i class="bi bi-trash" style="font-size:0.75rem"></i>
@@ -612,6 +613,7 @@
     function loadStudents() {
         const acYearId    = selAcYear.value;
         const yearLevelId = selYearLevel.value;
+        const semester    = selSemester.value;
         const opt         = selYearLevel.options[selYearLevel.selectedIndex];
         const level       = opt ? parseInt(opt.dataset.level || '0', 10) : 0;
 
@@ -648,6 +650,7 @@
         const params = new URLSearchParams({
             academic_year_id: acYearId,
             year_level_id:    yearLevelId,
+            semester:semester,
         });
         if (level >= 2 && selMajor.value) {
             params.set('major_id', selMajor.value);
@@ -873,8 +876,11 @@
         loadCourses();
     });
 
-    // Semester change: only reload courses
-    selSemester.addEventListener('change', loadCourses);
+    // Semester change: reload BOTH students AND courses
+    selSemester.addEventListener('change', () => {
+        loadStudents();
+        loadCourses();
+    });
 
     // Major change: reload BOTH students AND courses
     selMajor.addEventListener('change', () => {

@@ -3,10 +3,13 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AcademicYear;
 use App\Models\Course;
 use App\Models\Exam;
 use App\Models\ExamSchedule;
+use App\Models\Major;
 use App\Models\User;
+use App\Models\YearLevel;
 use App\Services\ActivityLogService;
 use App\Services\EmailService;
 use App\Services\NotificationService;
@@ -23,18 +26,38 @@ class ExamController extends Controller
 
     public function index(Request $request)
     {
-        $search   = $request->string('search')->trim()->limit(100)->value();
-        $status   = $request->filled('status') ? $request->status : null;
-        $courseId = $request->filled('course_id') ? (int) $request->course_id : null;
+        $search         = $request->string('search')->trim()->limit(100)->value();
+        $status         = $request->filled('status')          ? $request->status                 : null;
+        $courseId       = $request->filled('course_id')       ? (int) $request->course_id        : null;
+        $yearLevel      = $request->filled('year_level')      ? (int) $request->year_level       : null;
+        $academicYearId = $request->filled('academic_year_id')? (int) $request->academic_year_id : null;
+        $majorId        = $request->filled('major_id')        ? (int) $request->major_id         : null;
+        $semester       = $request->filled('semester')        ? (int) $request->semester         : null;
 
-        $courses = Course::where('is_active', true)->orderBy('title')->get(['id', 'title']);
+        $courses       = Course::where('is_active', true)->orderBy('title')->get(['id', 'title']);
+        $yearLevels    = YearLevel::orderBy('level')->get();
+        $academicYears = AcademicYear::orderByDesc('start_year')->get();
+        $majors        = Major::where('is_active', true)->orderBy('name')->get();
 
-        $exams = Exam::with(['course', 'teacher', 'activeSchedule'])
+        $exams = Exam::with(['course.major', 'teacher', 'activeSchedule'])
             ->when($search, fn ($q) =>
                 $q->where('title', 'like', "%{$search}%")
             )
             ->when($status,   fn ($q) => $q->where('status', $status))
             ->when($courseId, fn ($q) => $q->where('course_id', $courseId))
+            // Filter via courses table columns
+            ->when($yearLevel, fn ($q) =>
+                $q->whereHas('course', fn ($c) => $c->where('year_level', $yearLevel))
+            )
+            ->when($academicYearId, fn ($q) =>
+                $q->whereHas('course', fn ($c) => $c->where('academic_year_id', $academicYearId))
+            )
+            ->when($majorId, fn ($q) =>
+                $q->whereHas('course', fn ($c) => $c->where('major_id', $majorId))
+            )
+            ->when($semester, fn ($q) =>
+                $q->whereHas('course', fn ($c) => $c->where('semester', $semester))
+            )
             ->latest()
             ->paginate(10)
             ->withQueryString();
@@ -43,7 +66,9 @@ class ExamController extends Controller
         // when the user visits this page (badge clears on page load).
         \App\Models\UserNotification::markCategoryRead(auth()->id(), 'exam');
 
-        return view('admin.exams.index', compact('exams', 'courses'));
+        return view('admin.exams.index', compact(
+            'exams', 'courses', 'yearLevels', 'academicYears', 'majors'
+        ));
     }
 
     public function show(Exam $exam)
@@ -53,129 +78,102 @@ class ExamController extends Controller
         return view('admin.exams.show', compact('exam'));
     }
 
-    public function results(Exam $exam)
+    public function results(Request $request, Exam $exam)
     {
         $exam->load(['course', 'teacher', 'latestSchedule']);
 
-        // Get all results for this exam with student details and attempts
-        $results = \App\Models\Result::with(['student', 'attempt'])
-            ->where('exam_id', $exam->id)
-            ->orderByDesc('percentage')
-            ->get();
+        $search = $request->get('search', '');
+        $filter = $request->get('filter', 'all');
 
-        // Get all enrolled students who haven't taken the exam yet
+        // ── Base query ────────────────────────────────────────────────────
+        $query = \App\Models\Result::with(['student', 'attempt'])
+            ->where('exam_id', $exam->id);
+
+        if ($search) {
+            $query->whereHas('student', fn ($q) =>
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%")
+            );
+        }
+
+        switch ($filter) {
+            case 'failed':
+                // Failed = is_passed false regardless of reason (includes cheating/disqualified)
+                $query->where('is_passed', false);
+                break;
+
+            case 'incomplete':
+                // Build placeholder rows for enrolled-but-no-result students
+                $enrolledIds   = $exam->course->enrollments()->pluck('student_id');
+                $completedIds  = \App\Models\Result::where('exam_id', $exam->id)->pluck('student_id');
+                $incompleteIds = $enrolledIds->diff($completedIds);
+
+                $results = collect();
+                foreach ($incompleteIds as $sid) {
+                    $s = \App\Models\User::find($sid);
+                    if ($s) {
+                        $results->push((object) [
+                            'student'        => $s,
+                            'obtained_marks' => 0,
+                            'total_marks'    => $exam->total_marks,
+                            'percentage'     => 0,
+                            'is_passed'      => false,
+                            'is_incomplete'  => true,
+                            'attempt'        => null,
+                        ]);
+                    }
+                }
+
+                // Stats always from all results
+                $allResults         = \App\Models\Result::with('student')->where('exam_id', $exam->id)->get();
+                $enrolledStudentIds = $exam->course->enrollments()->pluck('student_id');
+                $resultStudentIds   = $allResults->pluck('student_id');
+                $absentStudents     = \App\Models\User::whereIn('id', $enrolledStudentIds)
+                    ->whereNotIn('id', $resultStudentIds)
+                    ->where('is_active', true)
+                    ->orderBy('name')
+                    ->get();
+                $stats = $this->buildResultStats($allResults, $enrolledStudentIds, $absentStudents);
+
+                return view('admin.exams.results', compact(
+                    'exam', 'results', 'absentStudents', 'stats', 'filter', 'search'
+                ));
+
+            case 'all':
+            default:
+                break;
+        }
+
+        $results = $query->orderByDesc('percentage')->get();
+
+        // ── Stats always from all results (not the filtered subset) ──────
+        $allResults         = \App\Models\Result::with('student')->where('exam_id', $exam->id)->get();
         $enrolledStudentIds = $exam->course->enrollments()->pluck('student_id');
-        $resultStudentIds = $results->pluck('student_id');
-        
-        $absentStudents = \App\Models\User::whereIn('id', $enrolledStudentIds)
+        $resultStudentIds   = $allResults->pluck('student_id');
+        $absentStudents     = \App\Models\User::whereIn('id', $enrolledStudentIds)
             ->whereNotIn('id', $resultStudentIds)
             ->where('is_active', true)
             ->orderBy('name')
             ->get();
+        $stats = $this->buildResultStats($allResults, $enrolledStudentIds, $absentStudents);
 
-        // Calculate statistics
-        $stats = [
+        return view('admin.exams.results', compact(
+            'exam', 'results', 'absentStudents', 'stats', 'filter', 'search'
+        ));
+    }
+
+    private function buildResultStats($allResults, $enrolledStudentIds, $absentStudents): array
+    {
+        return [
             'total_enrolled' => $enrolledStudentIds->count(),
-            'total_taken'    => $results->count(),
+            'total_taken'    => $allResults->count(),
             'total_absent'   => $absentStudents->count(),
-            'passed'         => $results->where('is_passed', true)->count(),
-            'failed'         => $results->where('is_passed', false)->count(),
-            'avg_score'      => $results->count() > 0 ? round($results->avg('percentage'), 2) : 0,
-            'highest_score'  => $results->max('percentage') ?? 0,
-            'lowest_score'   => $results->min('percentage') ?? 0,
+            'passed'         => $allResults->where('is_passed', true)->count(),
+            'failed'         => $allResults->where('is_passed', false)->count(),
+            'avg_score'      => $allResults->count() > 0 ? round($allResults->avg('percentage'), 2) : 0,
+            'highest_score'  => $allResults->max('percentage') ?? 0,
+            'lowest_score'   => $allResults->min('percentage') ?? 0,
         ];
-
-        return view('admin.exams.results', compact('exam', 'results', 'absentStudents', 'stats'));
-    }
-
-    // ── Exam Analytics ─────────────────────────────────────────────────
-
-    /**
-     * Exam analytics summary.
-     * Counts are derived from exam_attempts and enrollments — no new tables.
-     *
-     * Definitions:
-     *   Total Students  — distinct enrolled students for the exam's course
-     *   Completed       — attempts with status = 'submitted'
-     *   In Progress     — attempts with status = 'in_progress'
-     *   Terminated      — attempts with status IN (terminated, suspicious,
-     *                     terminated_pending_review, rejected)
-     *   Not Attempted   — enrolled students with zero attempts on this exam
-     *   Passed          — submitted attempts where the result is_passed = true
-     *   Failed          — submitted attempts where the result is_passed = false
-     */
-    public function analytics(Exam $exam)
-    {
-        $exam->load(['course', 'teacher', 'latestSchedule']);
-
-        // ── Enrolled students ─────────────────────────────────────────────
-        $enrolledIds = $exam->course->enrollments()->pluck('student_id');
-        $totalStudents = $enrolledIds->count();
-
-        // ── Attempts keyed by status ──────────────────────────────────────
-        // Take only the most recent attempt per student (attempt_number MAX).
-        $attempts = \App\Models\ExamAttempt::where('exam_id', $exam->id)
-            ->whereIn('student_id', $enrolledIds)
-            ->select('student_id', 'status', 'id')
-            ->orderByDesc('attempt_number')
-            ->get()
-            ->unique('student_id'); // keep only latest attempt per student
-
-        $attemptedIds = $attempts->pluck('student_id');
-
-        $completed   = $attempts->where('status', 'submitted')->count();
-        $inProgress  = $attempts->where('status', 'in_progress')->count();
-        $terminated  = $attempts->whereIn('status', [
-            'terminated', 'suspicious', 'terminated_pending_review', 'rejected',
-        ])->count();
-        $notAttempted = $enrolledIds->diff($attemptedIds)->count();
-
-        // ── Pass / Fail from results (only for submitted attempts) ─────────
-        $submittedAttemptIds = $attempts->where('status', 'submitted')->pluck('id');
-        $passed = \App\Models\Result::where('exam_id', $exam->id)
-            ->whereIn('attempt_id', $submittedAttemptIds)
-            ->where('is_passed', true)
-            ->count();
-        $failed = \App\Models\Result::where('exam_id', $exam->id)
-            ->whereIn('attempt_id', $submittedAttemptIds)
-            ->where('is_passed', false)
-            ->count();
-
-        $stats = compact(
-            'totalStudents', 'completed', 'inProgress',
-            'terminated', 'notAttempted', 'passed', 'failed'
-        );
-
-        return view('admin.exams.analytics', compact('exam', 'stats'));
-    }
-
-    /**
-     * Detail view: students who have NOT attempted this exam yet.
-     */
-    public function analyticsNotAttempted(Exam $exam)
-    {
-        $exam->load(['course', 'teacher']);
-
-        $enrolledIds    = $exam->course->enrollments()->pluck('student_id');
-        $attemptedIds   = \App\Models\ExamAttempt::where('exam_id', $exam->id)
-            ->whereIn('student_id', $enrolledIds)
-            ->pluck('student_id')
-            ->unique();
-
-        $notAttemptedIds = $enrolledIds->diff($attemptedIds);
-
-        $students = \App\Models\User::whereIn('id', $notAttemptedIds)
-            ->orderBy('name')
-            ->get(['id', 'name', 'email']);
-
-        return view('shared.exams.analytics-not-attempted', [
-            'exam'        => $exam,
-            'students'    => $students,
-            'backRoute'   => route('admin.exams.analytics', $exam),
-            'sidebarView' => 'partials.admin-sidebar',
-            'breadcrumbRole' => 'Admin',
-            'breadcrumbRoleUrl' => route('admin.dashboard'),
-        ]);
     }
 
     public function approve(Exam $exam)

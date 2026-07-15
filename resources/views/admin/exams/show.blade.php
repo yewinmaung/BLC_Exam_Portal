@@ -121,7 +121,7 @@
                                value="1" min="1" required>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Target Year
+                        <!-- <label class="form-label">Target Year
                             <span class="text-muted fw-normal">(optional)</span>
                         </label>
                         <select name="target_year" class="form-select">
@@ -131,7 +131,7 @@
                             <option value="3">Year 3</option>
                             <option value="4">Year 4</option>
                             <option value="5">Year 5</option>
-                        </select>
+                        </select> -->
                         <div class="form-text">Restrict this exam to a specific academic year group.</div>
                     </div>
                     <button type="submit" class="btn btn-primary w-100">
@@ -162,12 +162,12 @@
                         <span class="text-muted small">Attempts</span>
                         <div class="fw-600" style="font-weight:600">{{ $s->attempt_limit }}</div>
                     </div>
-                    <div class="col-4">
+                    <!-- <div class="col-4">
                         <span class="text-muted small">Target Year</span>
                         <div class="fw-600" style="font-weight:600">
                             {{ $s->target_year ? 'Year ' . $s->target_year : 'All years' }}
                         </div>
-                    </div>
+                    </div> -->
                     @if($s->is_published)
                     <div class="col-12 mt-1">
                         <span class="status-pill status-published">Live</span>

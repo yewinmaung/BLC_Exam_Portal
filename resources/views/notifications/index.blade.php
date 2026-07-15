@@ -87,10 +87,10 @@ $unreadCount = $notifications->where('is_read', false)->count();
             {{-- Actions --}}
             <div class="notif-row-actions">
                 @if($n->link)
-                <a href="{{ $n->link }}"
+                <!-- <a href="{{ $n->link }}"
                    class="btn btn-sm btn-outline-primary">
                     <i class="bi bi-arrow-right"></i>
-                </a>
+                </a> -->
                 @endif
                 @if(!$n->is_read)
                 <form method="POST" action="{{ route('notifications.read', $n) }}">@csrf

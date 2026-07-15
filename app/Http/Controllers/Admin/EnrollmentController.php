@@ -82,6 +82,7 @@ class EnrollmentController extends Controller
         $academicYearId = (int) $request->get('academic_year_id', 0);
         $yearLevelId    = (int) $request->get('year_level_id', 0);
         $majorId        = (int) $request->get('major_id', 0);
+        $semester       = $request->get('semester', ''); // '1', '2', or ''
 
         if (!$academicYearId || !$yearLevelId) {
             return response()->json([]);
@@ -95,6 +96,11 @@ class EnrollmentController extends Controller
         // Base: students with a StudentYearRecord for this academic year + year level
         $recordQuery = StudentYearRecord::where('academic_year_id', $academicYearId)
             ->where('year_level_id', $yearLevelId);
+
+        // Filter by semester when one is selected (StudentYearRecord.semester stores '1' or '2')
+        if ($semester !== '' && in_array($semester, ['1', '2'], true)) {
+            $recordQuery->where('semester', $semester);
+        }
 
         // Year 1 → no major filter (all Year 1 students are CST)
         // Year 2+ → filter by major name string when a major_id is supplied

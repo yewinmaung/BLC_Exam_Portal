@@ -38,7 +38,7 @@ class UserController extends Controller
             ->when($status === 'active',   fn ($q) => $q->where('is_active', true))
             ->when($status === 'inactive', fn ($q) => $q->where('is_active', false))
             ->latest()
-            ->paginate(15)
+            ->paginate(10)
             ->withQueryString();
 
         return view('admin.users.index', compact('users', 'roles'));

@@ -104,14 +104,40 @@
     </div>
 </div>
 
+{{-- Search & Filter --}}
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="GET" action="{{ route('admin.exams.results', $exam) }}" class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label small text-muted">Filter Students</label>
+                <select name="filter" class="form-select" onchange="this.form.submit()">
+                    <option value="all"        {{ ($filter ?? 'all') === 'all'     ? 'selected' : '' }}>All Students</option>
+                    <option value="failed"     {{ ($filter ?? '') === 'failed'     ? 'selected' : '' }}>Failed Students (incl. Cheating)</option>
+                    <option value="incomplete" {{ ($filter ?? '') === 'incomplete' ? 'selected' : '' }}>Incomplete / Not Attempted</option>
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label small text-muted">Search Students</label>
+                <input type="text" name="search" class="form-control"
+                       placeholder="Search by name or email..."
+                       value="{{ $search ?? '' }}">
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary w-100">
+                    <i class="bi bi-search me-1"></i> Search
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 {{-- Results Table --}}
 <div class="card mb-3">
     <div class="card-header d-flex align-items-center justify-content-between">
         <span><i class="bi bi-table me-2"></i>Student Results</span>
         <span class="badge" style="background:var(--royal-light,#ede9fe);color:var(--royal,#3730a3)">
             {{ $results->count() }} results
-        </span>
-    </div>
+        </span>    </div>
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table mb-0">
@@ -129,40 +155,61 @@
                 </thead>
                 <tbody>
                     @forelse($results as $index => $result)
+                    @php
+                        $isIncomplete = isset($result->is_incomplete) && $result->is_incomplete;
+                        $hasCheating  = $result->attempt && in_array(
+                            $result->attempt->status,
+                            ['terminated', 'suspicious', 'terminated_pending_review']
+                        );
+                    @endphp
                     <tr>
                         <td class="text-muted">{{ $index + 1 }}</td>
                         <td style="font-weight:600;color:var(--text-1,#111827)">
-                            <a href="{{ route('admin.students.show', $result->student) }}" 
+                            @if(!$isIncomplete)
+                            <a href="{{ route('admin.students.show', $result->student) }}"
                                class="text-decoration-none" style="color:var(--text-1,#111827)">
                                 {{ $result->student->name }}
                             </a>
+                            @else
+                                {{ $result->student->name }}
+                            @endif
                         </td>
                         <td class="text-muted small">{{ $result->student->email }}</td>
                         <td>
+                            @if($isIncomplete)
+                                <span class="text-muted">—</span>
+                            @else
                             <span class="badge" style="background:#f0f4ff;color:#1e40af;font-weight:700">
                                 {{ $result->obtained_marks }} / {{ $result->total_marks }}
                             </span>
+                            @endif
                         </td>
                         <td>
+                            @if($isIncomplete)
+                                <span class="text-muted">—</span>
+                            @else
                             <div class="d-flex align-items-center gap-2">
                                 <div class="progress" style="width:60px;height:8px">
-                                    <div class="progress-bar {{ $result->is_passed ? 'bg-success' : 'bg-danger' }}" 
+                                    <div class="progress-bar {{ $result->is_passed ? 'bg-success' : 'bg-danger' }}"
                                          style="width:{{ $result->percentage }}%"></div>
                                 </div>
                                 <span class="fw-bold {{ $result->is_passed ? 'text-success' : 'text-danger' }}">
                                     {{ $result->percentage }}%
                                 </span>
                             </div>
+                            @endif
                         </td>
                         <td>
-                            @if($result->isDisqualified())
+                            @if($isIncomplete)
+                                <span class="status-pill" style="background:#f3f4f6;color:#6b7280">Not Attempted</span>
+                            @elseif(method_exists($result, 'isDisqualified') && $result->isDisqualified())
                                 <div class="d-flex align-items-center gap-2">
                                     <span class="status-pill" style="background:#fef3c7;color:#92400e">
                                         <i class="bi bi-exclamation-triangle me-1"></i>Failed (Cheating)
                                     </span>
                                     @if($result->violation_reason)
-                                    <button class="btn btn-sm btn-outline-warning" 
-                                            data-bs-toggle="modal" 
+                                    <button class="btn btn-sm btn-outline-warning"
+                                            data-bs-toggle="modal"
                                             data-bs-target="#violationModal{{ $result->id }}"
                                             title="View Details">
                                         <i class="bi bi-info-circle"></i>
@@ -180,10 +227,10 @@
                             @endif
                         </td>
                         <td class="text-muted small">
-                            Attempt #{{ $result->attempt->attempt_number ?? 1 }}
+                            @if($isIncomplete)—@else Attempt #{{ $result->attempt->attempt_number ?? 1 }}@endif
                         </td>
                         <td class="text-muted small">
-                            {{ $result->attempt?->submitted_at?->format('M d, Y H:i') ?? '—' }}
+                            @if($isIncomplete)—@else{{ $result->attempt?->submitted_at?->format('M d, Y H:i') ?? '—' }}@endif
                         </td>
                     </tr>
                     @empty

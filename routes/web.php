@@ -49,8 +49,6 @@ Route::middleware(['auth', 'exam.session'])->group(function () {
         Route::get('exams', [AdminExamController::class, 'index'])->name('exams.index');
         Route::get('exams/{exam}', [AdminExamController::class, 'show'])->name('exams.show');
         Route::get('exams/{exam}/results', [AdminExamController::class, 'results'])->name('exams.results');
-        Route::get('exams/{exam}/analytics', [AdminExamController::class, 'analytics'])->name('exams.analytics');
-        Route::get('exams/{exam}/analytics/not-attempted', [AdminExamController::class, 'analyticsNotAttempted'])->name('exams.analytics.not-attempted');
         Route::post('exams/{exam}/approve', [AdminExamController::class, 'approve'])->name('exams.approve');
         Route::post('exams/{exam}/schedule', [AdminExamController::class, 'schedule'])->name('exams.schedule');
         Route::put('exams/{exam}/schedule/{schedule}', [AdminExamController::class, 'updateSchedule'])->name('exams.schedule.update');
@@ -129,8 +127,6 @@ Route::middleware(['auth', 'exam.session'])->group(function () {
         Route::delete('exams/{exam}/questions/{question}', [TeacherExamController::class, 'deleteQuestion'])->name('exams.questions.destroy');
         Route::post('exams/{exam}/submit', [TeacherExamController::class, 'submitForApproval'])->name('exams.submit');
         Route::get('exams/{exam}/results', [TeacherExamController::class, 'results'])->name('exams.results');
-        Route::get('exams/{exam}/analytics', [TeacherExamController::class, 'analytics'])->name('exams.analytics');
-        Route::get('exams/{exam}/analytics/not-attempted', [TeacherExamController::class, 'analyticsNotAttempted'])->name('exams.analytics.not-attempted');
         Route::post('exams/{exam}/import', [TeacherExamController::class, 'importQuestions'])->name('exams.import');
 
         // ── Result Reports ──

@@ -89,7 +89,6 @@
                             <select name="semester" class="form-select @error('semester') is-invalid @enderror" required>
                                 <option value="1" {{ old('semester', $course->semester) == '1' ? 'selected' : '' }}>Semester 1</option>
                                 <option value="2" {{ old('semester', $course->semester) == '2' ? 'selected' : '' }}>Semester 2</option>
-                                <option value="0" {{ old('semester', $course->semester) == '0' ? 'selected' : '' }}>Both</option>
                             </select>
                             @error('semester')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
