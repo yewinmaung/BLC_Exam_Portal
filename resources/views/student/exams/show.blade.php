@@ -362,9 +362,9 @@
             <div class="card-body text-center py-4">
                 <i class="bi bi-calendar-check d-block mb-2" style="font-size:2rem;color:var(--blc-gold)"></i>
                 <div style="font-weight:600;color:var(--blc-navy)" class="mb-1">Exam Ended</div>
-                <div class="text-muted small">Ended {{ $schedule->ends_at->diffForHumans() }}</div>
+                <div class="text-muted small mb-3">Ended {{ $schedule->ends_at->diffForHumans() }}</div>
                 @if($result)
-                <div class="mt-3 p-2 rounded" style="background:#f0fdf4;border:1px solid #bbf7d0">
+                <div class="mb-3 p-2 rounded" style="background:#f0fdf4;border:1px solid #bbf7d0">
                     <div style="font-size:0.82rem;font-weight:700;color:#166534">
                         Score: {{ $result->obtained_marks }}/{{ $result->total_marks }}
                         ({{ $result->percentage }}%)
@@ -374,6 +374,9 @@
                     </div>
                 </div>
                 @endif
+                <a href="{{ route('student.results.index') }}" class="btn btn-outline-primary w-100 py-2" style="font-weight:700">
+                    <i class="bi bi-eye me-1"></i> View Results
+                </a>
             </div>
         </div>
 
@@ -382,8 +385,13 @@
             <div class="card-body text-center py-4">
                 <i class="bi bi-hourglass-split d-block mb-2" style="font-size:2rem;color:var(--blc-gold)"></i>
                 <div style="font-weight:600;color:var(--blc-navy)" class="mb-1">Exam Not Started Yet</div>
-                <div class="text-muted small">Starts {{ $schedule->starts_at->diffForHumans() }}</div>
-                <div class="text-muted small mt-1">{{ $schedule->starts_at->format('M d, Y — H:i') }}</div>
+                <div class="text-muted small mb-2">Starts at {{ $schedule->starts_at->format('M d, Y — H:i') }}</div>
+                <div class="mt-3 mb-1 text-muted small" style="font-weight:600;letter-spacing:0.04em;text-transform:uppercase">Time remaining</div>
+                <div id="examStartCountdown"
+                     data-countdown-to="{{ $schedule->starts_at->timestamp }}"
+                     style="font-size:1.75rem;font-weight:800;color:var(--blc-navy);font-variant-numeric:tabular-nums;letter-spacing:0.04em">
+                    --:--:--
+                </div>
             </div>
         </div>
         @endif
@@ -493,4 +501,34 @@
     border-color:var(--blc-navy);
 }
 </style>
+@endpush
+
+@push('scripts')
+<script>
+(function () {
+    const el = document.getElementById('examStartCountdown');
+    if (!el) return;
+
+    const target = parseInt(el.dataset.countdownTo, 10);
+
+    function formatRemaining(totalSeconds) {
+        if (totalSeconds <= 0) return '00:00:00';
+        const h = Math.floor(totalSeconds / 3600);
+        const m = Math.floor((totalSeconds % 3600) / 60);
+        const s = totalSeconds % 60;
+        return [h, m, s].map(n => String(n).padStart(2, '0')).join(':');
+    }
+
+    function tick() {
+        const remaining = target - Math.floor(Date.now() / 1000);
+        el.textContent = formatRemaining(remaining);
+        if (remaining <= 0) {
+            location.reload();
+        }
+    }
+
+    tick();
+    setInterval(tick, 1000);
+})();
+</script>
 @endpush

@@ -17,15 +17,15 @@ class EmailService
     // ── Public API ────────────────────────────────────────────────────
 
     /**
-     * Send a welcome email to a newly created user.
-     * Falls back to a plain email if the 'welcome' template does not exist.
+     * Send a welcome email to a newly created user via DB template.
+     * If the 'welcome' template is inactive or missing, logs a warning and skips
+     * silently — no Blade fallback, no exception thrown.
      */
     public function sendWelcomeEmail(User $user): void
     {
         try {
             $vars = $this->resolveUserVars($user);
 
-            // Try template first
             $sent = $this->sendTemplate(
                 'welcome',
                 $user->email,
@@ -33,18 +33,12 @@ class EmailService
                 $vars,
                 'welcome',
                 $user->id,
-                true
+                true,
+                'welcome'
             );
 
-            // Fallback: template inactive/missing — send a plain welcome
             if (!$sent) {
-                $body = view('emails.welcome', ['user' => $user])->render();
-                $this->send(
-                    $user->email, $user->name,
-                    'Welcome to ' . config('app.name') . '!',
-                    $body,
-                    'welcome', null, $user->id, true
-                );
+                logger()->warning("sendWelcomeEmail: 'welcome' template missing or inactive for user #{$user->id}. Email skipped.");
             }
         } catch (\Throwable $e) {
             logger()->error("Welcome email failed for user #{$user->id}: " . $e->getMessage());
@@ -63,7 +57,8 @@ class EmailService
         string $event = null,
         string $templateSlug = null,
         int $userId = null,
-        bool $queue = true
+        bool $queue = true,
+        string $emailType = null
     ): EmailLog {
         $log = EmailLog::create([
             'to_email'      => $toEmail,
@@ -74,6 +69,7 @@ class EmailService
             'body_html'     => $bodyHtml,
             'template_slug' => $templateSlug,
             'event'         => $event,
+            'email_type'    => $emailType,
             'status'        => 'queued',
             'provider'      => config('mail.default', 'smtp'),
             'user_id'       => $userId,
@@ -91,6 +87,8 @@ class EmailService
 
     /**
      * Send via template slug with variable substitution.
+     * Loads the template from the database, renders {{variables}}, creates an
+     * EmailLog record, and dispatches SendEmailJob (or delivers synchronously).
      */
     public function sendTemplate(
         string $templateSlug,
@@ -99,7 +97,8 @@ class EmailService
         array $vars = [],
         string $event = null,
         int $userId = null,
-        bool $queue = true
+        bool $queue = true,
+        string $emailType = null
     ): ?EmailLog {
         $template = EmailTemplate::findBySlug($templateSlug);
 
@@ -110,11 +109,15 @@ class EmailService
 
         $rendered = $template->render($vars);
 
+        // Default email_type to the template slug if none provided
+        $resolvedType = $emailType ?? $templateSlug;
+
         return $this->send(
             $toEmail, $toName,
             $rendered['subject'], $rendered['bodyHtml'],
             $event ?? $templateSlug, $templateSlug,
-            $userId, $queue
+            $userId, $queue,
+            $resolvedType
         );
     }
 

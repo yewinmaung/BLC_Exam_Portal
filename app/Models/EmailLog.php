@@ -8,8 +8,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class EmailLog extends Model
 {
     protected $fillable = [
-        'to_email', 'to_name', 'from_email', 'from_name',
+        'to_email', 'to_name', 'cc_email', 'cc_name',
+        'from_email', 'from_name',
         'subject', 'body_html', 'template_slug', 'event',
+        'email_type', 'campaign_id',
         'status', 'provider', 'error', 'message_id',
         'user_id', 'queued_at', 'sent_at',
     ];

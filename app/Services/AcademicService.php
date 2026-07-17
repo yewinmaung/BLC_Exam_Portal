@@ -38,7 +38,7 @@ class AcademicService
 
     /**
      * Get academic history for a student across all year records,
-     * using live exam results (no transcript archiving needed).
+     * using live exam results scoped to each record's academic year / year level / semester.
      */
     public function getStudentHistory(User $student): array
     {
@@ -49,14 +49,35 @@ class AcademicService
 
         $history = [];
         foreach ($records as $record) {
-            // Use live results for display
-            $results = Result::with(['exam.course'])
+            $yearLevel = $record->yearLevel?->level;
+            $semester  = (int) $record->semester;
+
+            $results = Result::with([
+                    'exam.course',
+                    'exam.questions.answers',
+                    'attempt.studentAnswers.answer',
+                ])
                 ->where('student_id', $student->id)
-                ->whereHas('exam', fn ($q) =>
-                    $q->whereHas('course.enrollments', fn ($e) =>
-                        $e->where('student_id', $student->id)
-                    )
-                )
+                ->where('is_published', true)
+                ->whereHas('exam.schedules', fn ($sq) => $sq->where('ends_at', '<=', now()))
+                ->whereHas('exam.course', function ($c) use ($student, $record, $yearLevel, $semester) {
+                    $c->where('academic_year_id', $record->academic_year_id)
+                        ->whereHas('enrollments', fn ($e) => $e->where('student_id', $student->id));
+
+                    // year_level 0 = all years; otherwise match this record's level
+                    if ($yearLevel) {
+                        $c->where(function ($q) use ($yearLevel) {
+                            $q->where('year_level', 0)
+                              ->orWhere('year_level', $yearLevel);
+                        });
+                    }
+
+                    // semester 0 = both; otherwise match this record's semester
+                    $c->where(function ($q) use ($semester) {
+                        $q->where('semester', 0)
+                          ->orWhere('semester', $semester);
+                    });
+                })
                 ->latest()
                 ->get();
 

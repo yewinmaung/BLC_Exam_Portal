@@ -57,7 +57,8 @@ class ExamSessionController extends Controller
                     ->with('error', $result['message']);
             }
 
-            // Recovery succeeded — refresh to pick up cleared disconnected_at.
+            // Capture last question before refresh (disconnected_at is cleared; last_question_id stays).
+            $resumeQuestionId = $attempt->last_question_id;
             $attempt->refresh();
             session()->flash('info', $result['message']);
 
@@ -65,7 +66,13 @@ class ExamSessionController extends Controller
             $finalAvailableSeconds = $result['frozen_seconds'] ?? 0;
             $effectiveEndsAt       = now()->addSeconds($finalAvailableSeconds);
 
-            return $this->renderExamView($attempt, $schedule, $effectiveEndsAt);
+            return $this->renderExamView(
+                $attempt,
+                $schedule,
+                $effectiveEndsAt,
+                isSessionRecovery: true,
+                resumeQuestionId: $resumeQuestionId
+            );
         }
 
         // ── Timer-expiry guard ────────────────────────────────────────────
@@ -209,8 +216,13 @@ class ExamSessionController extends Controller
      * Build and return the exam view.
      * Extracted to avoid duplication between normal and recovery code paths.
      */
-    private function renderExamView(ExamAttempt $attempt, $schedule, $effectiveEndsAt): \Illuminate\View\View
-    {
+    private function renderExamView(
+        ExamAttempt $attempt,
+        $schedule,
+        $effectiveEndsAt,
+        bool $isSessionRecovery = false,
+        ?int $resumeQuestionId = null
+    ): \Illuminate\View\View {
         $exam = $attempt->exam()->with(['questions.answers'])->first();
 
         if (! $this->examAccess->canDecryptQuestions(auth()->user(), $exam)) {
@@ -245,14 +257,21 @@ class ExamSessionController extends Controller
 
         $savedAnswers = $attempt->studentAnswers()->pluck('answer_id', 'question_id');
 
+        // Page refresh mid-exam (answers saved, not a disconnect recovery)
+        // still needs a user-gesture fullscreen gate.
+        $isReturning = $isSessionRecovery || $savedAnswers->isNotEmpty();
+
         return view('student.exam.take', [
-            'attempt'        => $attempt,
-            'exam'           => $exam,
-            'questions'      => $questions,
-            'savedAnswers'   => $savedAnswers,
-            'endsAt'         => $effectiveEndsAt->timestamp,
-            'scheduleEndsAt' => $schedule ? $schedule->ends_at->timestamp : null,
-            'securityPolicy' => [
+            'attempt'            => $attempt,
+            'exam'               => $exam,
+            'questions'          => $questions,
+            'savedAnswers'       => $savedAnswers,
+            'endsAt'             => $effectiveEndsAt->timestamp,
+            'scheduleEndsAt'     => $schedule ? $schedule->ends_at->timestamp : null,
+            'isSessionRecovery'  => $isSessionRecovery,
+            'isReturning'        => $isReturning,
+            'resumeQuestionId'   => $resumeQuestionId ?? $attempt->last_question_id,
+            'securityPolicy'     => [
                 'fullscreen_detection_enabled'        => true,
                 'blur_detection_enabled'              => true,
                 'tab_switch_detection_enabled'        => true,

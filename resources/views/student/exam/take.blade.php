@@ -331,6 +331,9 @@
       data-submit-url="{{ route('student.exam.submit', $attempt) }}"
       data-disconnect-url="{{ route('student.exam.disconnect', $attempt) }}"
       data-ends-at="{{ $endsAt }}"
+      data-session-recovery="{{ ($isSessionRecovery ?? false) ? '1' : '0' }}"
+      data-returning="{{ ($isReturning ?? false) ? '1' : '0' }}"
+      data-resume-question-id="{{ $resumeQuestionId ?? '' }}"
       data-policy-fullscreen="{{ $securityPolicy['fullscreen_detection_enabled'] ? '1' : '0' }}"
       data-policy-blur="{{ $securityPolicy['blur_detection_enabled'] ? '1' : '0' }}"
       data-policy-tab-switch="{{ $securityPolicy['tab_switch_detection_enabled'] ? '1' : '0' }}"
@@ -340,23 +343,44 @@
       data-policy-devtools="{{ $securityPolicy['devtools_detection_enabled'] ? '1' : '0' }}"
       data-policy-keyboard="{{ $securityPolicy['keyboard_shortcut_detection_enabled'] ? '1' : '0' }}">
 
-{{-- Fullscreen gate --}}
+{{-- Fullscreen gate — always required (new start, page refresh, or session recovery) --}}
 @php
-    // Check if this is a resumed exam (has saved answers)
-    $hasAnswers = $savedAnswers->isNotEmpty();
+    $isSessionRecovery = $isSessionRecovery ?? false;
+    $isReturning = $isReturning ?? false;
 @endphp
-<div class="fs-modal-overlay" id="fsOverlay" @if($hasAnswers) style="display:none" @endif>
+<div class="fs-modal-overlay" id="fsOverlay">
     <div class="fs-modal-box">
         <div class="fs-modal-icon"><i class="bi bi-fullscreen"></i></div>
+        @if($isSessionRecovery)
+        <h4>Session Recovered</h4>
+        <p>
+            Your exam session has been restored. Answers and remaining time are preserved.<br>
+            Re-enter <strong>fullscreen</strong> to continue. Cheating detection stays active.<br>
+            <strong>{{ count($questions) }} questions · time remaining on the timer</strong>
+        </p>
+        <button class="fs-start-btn" id="enterFullscreen" type="button">
+            <i class="bi bi-fullscreen me-2"></i>Resume Exam in Fullscreen
+        </button>
+        @elseif($isReturning)
+        <h4>Continue Your Exam</h4>
+        <p>
+            Return to <strong>fullscreen</strong> to continue. Switching tabs or exiting fullscreen will be flagged.<br>
+            <strong>{{ count($questions) }} questions · timer continues</strong>
+        </p>
+        <button class="fs-start-btn" id="enterFullscreen" type="button">
+            <i class="bi bi-play-fill me-2"></i>Continue Exam
+        </button>
+        @else
         <h4>Ready to Begin?</h4>
         <p>
             The exam will open in fullscreen mode.<br>
             Switching tabs or exiting fullscreen will be flagged as a violation.<br>
             <strong>{{ count($questions) }} questions · {{ $attempt->schedule->duration_minutes ?? '?' }} minutes</strong>
         </p>
-        <button class="fs-start-btn" id="enterFullscreen">
+        <button class="fs-start-btn" id="enterFullscreen" type="button">
             <i class="bi bi-play-fill me-2"></i>Start Exam
         </button>
+        @endif
     </div>
 </div>
 
@@ -537,6 +561,6 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script src="{{ asset('js/exam-anticheat.js') }}"></script>
+<script src="{{ asset('js/exam-anticheat.js') }}?v={{ filemtime(public_path('js/exam-anticheat.js')) }}"></script>
 </body>
 </html>

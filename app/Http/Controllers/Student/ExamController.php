@@ -27,6 +27,13 @@ class ExamController extends Controller
             ->latest()
             ->paginate(15);
 
+        // Map exam_id => active in_progress attempt (for list card actions)
+        $activeAttempts = ExamAttempt::where('student_id', $studentId)
+            ->where('status', 'in_progress')
+            ->whereIn('exam_id', $exams->pluck('id'))
+            ->get()
+            ->keyBy('exam_id');
+
         $securityTerminatedAttempts = ExamAttempt::where('student_id', $studentId)
             ->where('status', 'terminated_pending_review')
             ->with(['exam', 'cheatingLogs'])
@@ -36,7 +43,7 @@ class ExamController extends Controller
         // Mark exam notifications as read when student opens Exams page
         \App\Models\UserNotification::markCategoryRead($studentId, 'exam');
 
-        return view('student.exams.index', compact('exams', 'securityTerminatedAttempts'));
+        return view('student.exams.index', compact('exams', 'securityTerminatedAttempts', 'activeAttempts'));
     }
 
     public function show(Exam $exam)

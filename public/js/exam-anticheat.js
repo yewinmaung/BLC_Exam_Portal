@@ -60,27 +60,37 @@
 
     /* ════════════════════════════════════════
        Fullscreen gate
+       Always require a user click before starting.
+       Session recovery / page return must re-enter fullscreen so
+       cheating detection (fullscreen, blur, tab switch) is active.
     ════════════════════════════════════════ */
     const fsOverlay = document.getElementById('fsOverlay');
+    const isSessionRecovery = body.dataset.sessionRecovery === '1';
+    const isReturning = body.dataset.returning === '1' || isSessionRecovery;
+    const resumeQuestionId = body.dataset.resumeQuestionId || '';
 
-    // Check if this is a resumed exam (overlay is hidden)
-    const isResume = fsOverlay && fsOverlay.style.display === 'none';
+    // Brief grace after start so entering fullscreen doesn't trip blur/tab flags
+    let violationGraceUntil = 0;
 
-    if (isResume) {
-        // Auto-start for resumed exams
+    function activateExamSession() {
         examStarted = true;
-        // Try to enter fullscreen (will fail silently if not allowed)
-        document.documentElement.requestFullscreen().catch(() => {});
+        violationGraceUntil = Date.now() + 2500;
+        if (fsOverlay) fsOverlay.style.display = 'none';
     }
 
     document.getElementById('enterFullscreen')?.addEventListener('click', async () => {
         try {
             await document.documentElement.requestFullscreen();
         } catch (_e) {
-            // Fullscreen may be blocked in some browsers — allow anyway.
+            // Fullscreen may be blocked in some browsers — still enable detection.
         }
-        examStarted = true;
-        if (fsOverlay) fsOverlay.style.display = 'none';
+        activateExamSession();
+
+        // If somehow still not fullscreen after gesture, open the recovery prompt
+        // so the student must return to fullscreen (cheating system stays engaged).
+        if (policy.fullscreen && !document.fullscreenElement && examStarted) {
+            showFsRecoveryModal();
+        }
     });
 
     /* ════════════════════════════════════════
@@ -104,10 +114,12 @@
     }
 
     function onVisibilityChange() {
+        if (Date.now() < violationGraceUntil) return;
         if (document.hidden) reportViolation('tab_switch', 'Tab switched');
     }
 
     function onWindowBlur() {
+        if (Date.now() < violationGraceUntil) return;
         if (examStarted) reportViolation('window_blur', 'Window lost focus');
     }
 
@@ -200,16 +212,12 @@
         // 2. Exam is not locked (not already terminated)
         // 3. Not in the middle of an intentional submit
         if (examStarted && !examLocked && !isSubmitting && disconnectUrl) {
-            // Get current question ID
-            const currentQuestionId = blocks[currentIndex]?.dataset.questionId || null;
-
-            // Use synchronous fetch with keepalive to ensure the request completes
-            // even if the page is being unloaded
-            navigator.sendBeacon(disconnectUrl, new Blob([JSON.stringify({
-                question_id: currentQuestionId,
-                reason: 'browser_close',
-                _token: csrf
-            })], { type: 'application/json' }));
+            const currentQuestionId = blocks[currentIndex]?.dataset.questionId || '';
+            const fd = new FormData();
+            fd.append('_token', csrf);
+            if (currentQuestionId) fd.append('question_id', currentQuestionId);
+            fd.append('reason', 'browser_close');
+            navigator.sendBeacon(disconnectUrl, fd);
         }
     });
 
@@ -218,6 +226,7 @@
     ════════════════════════════════════════ */
     function reportViolation(type, details) {
         if (!examStarted || examLocked) return;
+        if (Date.now() < violationGraceUntil) return;
 
         fetch(violationUrl, {
             method:  'POST',
@@ -513,11 +522,12 @@
     /* ════════════════════════════════════════
        Init
     ════════════════════════════════════════ */
-    // For resumed exams, start at first unanswered question
-    // For new exams, start at question 0
+    // Resume from last viewed question (session recovery), else first unanswered, else 0
     let startIndex = 0;
-    if (isResume) {
-        // Find first unanswered question
+    if (resumeQuestionId) {
+        const idx = blocks.findIndex(b => String(b.dataset.questionId) === String(resumeQuestionId));
+        if (idx >= 0) startIndex = idx;
+    } else if (isReturning) {
         for (let i = 0; i < blocks.length; i++) {
             if (!isAnswered(blocks[i])) {
                 startIndex = i;

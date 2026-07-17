@@ -11,20 +11,7 @@
 
 @section('content')
 
-{{-- Summary stats --}}
-@php
-    $totalExams  = $results->total();
-    $passedCount = \App\Models\Result::where('student_id', auth()->id())
-                    ->where('is_published', true)
-                    ->where('is_passed', true)
-                    ->whereHas('exam.schedules', fn($sq) => $sq->where('ends_at', '<=', now()))
-                    ->count();
-    $avgPct      = round(\App\Models\Result::where('student_id', auth()->id())
-                    ->where('is_published', true)
-                    ->whereHas('exam.schedules', fn($sq) => $sq->where('ends_at', '<=', now()))
-                    ->avg('percentage') ?? 0, 1);
-@endphp
-
+{{-- Summary stats (current / selected academic year) --}}
 <div class="row g-3 mb-4">
     @foreach([
         ['label'=>'Exams Taken', 'value'=>$totalExams,      'icon'=>'bi-pencil-square',   'color'=>'var(--royal,#3730a3)'],
@@ -54,18 +41,19 @@
             <div style="min-width:180px;flex:1">
                 <label class="form-label mb-1" style="font-size:0.75rem;font-weight:600">Academic Year</label>
                 <select name="academic_year_id" class="form-select form-select-sm">
-                    <option value="">All Years</option>
                     @foreach($academicYears as $ay)
-                    <option value="{{ $ay->id }}" {{ request('academic_year_id') == $ay->id ? 'selected' : '' }}>{{ $ay->name }}</option>
+                    <option value="{{ $ay->id }}" {{ (int) $selectedYearId === (int) $ay->id ? 'selected' : '' }}>
+                        {{ $ay->name }}{{ $ay->is_current ? ' (Current)' : '' }}
+                    </option>
                     @endforeach
                 </select>
             </div>
             <div style="min-width:110px">
                 <label class="form-label mb-1" style="font-size:0.75rem;font-weight:600">Semester</label>
                 <select name="semester" class="form-select form-select-sm">
-                    <option value="">All</option>
-                    <option value="1" {{ request('semester') === '1' ? 'selected' : '' }}>Semester 1</option>
-                    <option value="2" {{ request('semester') === '2' ? 'selected' : '' }}>Semester 2</option>
+                    <option value="" {{ $selectedSemester === null ? 'selected' : '' }}>Sem 1 &amp; Sem 2</option>
+                    <option value="1" {{ $selectedSemester === 1 ? 'selected' : '' }}>Semester 1</option>
+                    <option value="2" {{ $selectedSemester === 2 ? 'selected' : '' }}>Semester 2</option>
                 </select>
             </div>
             <div class="d-flex gap-1">
@@ -76,66 +64,55 @@
     </div>
 </div>
 
-{{-- Results table --}}
+{{-- Current / selected year results: Sem 1 + Sem 2 --}}
 <div class="card">
-    <div class="card-header"><i class="bi bi-list-check me-2"></i>My Exam Results</div>
+    <div class="card-header d-flex flex-wrap align-items-center gap-2">
+        <span><i class="bi bi-list-check me-2"></i>My Exam Results</span>
+        @if($selectedYear)
+        <span class="badge ms-auto" style="background:var(--royal,#3730a3);color:#fff;font-weight:600">
+            {{ $selectedYear->name }}
+            @if($selectedYear->is_current) · Current @endif
+        </span>
+        @endif
+    </div>
     <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table mb-0" style="font-size:0.84rem">
-                <thead>
-                    <tr><th>Exam</th><th>Course</th><th>Score</th><th>%</th><th>Status</th><th>Date</th></tr>
-                </thead>
-                <tbody>
-                    @forelse($results as $r)
-                    <tr>
-                        <td style="font-weight:600">{{ $r->exam->title ?? '—' }}</td>
-                        <td style="color:#6b7280">{{ $r->exam->course->title ?? '—' }}</td>
-                        <td>
-                            <span style="font-weight:700">{{ $r->obtained_marks }}</span>
-                            <span class="text-muted">/{{ $r->total_marks }}</span>
-                        </td>
-                        <td>
-                            <div class="d-flex align-items-center gap-1">
-                                <div style="width:50px;height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden">
-                                    <div style="width:{{ min($r->percentage,100) }}%;height:100%;background:{{ $r->is_passed ? '#22c55e' : '#ef4444' }};border-radius:3px"></div>
-                                </div>
-                                <span>{{ $r->percentage }}%</span>
-                            </div>
-                        </td>
-                        <td>
-                            @if($r->isDisqualified())
-                                <span class="badge bg-warning text-dark">Failed (Cheating)</span>
-                            @elseif($r->is_passed)
-                                <span class="badge bg-success">Passed</span>
-                            @else
-                                <span class="badge bg-danger">Failed</span>
-                            @endif
-                        </td>
-                        <td style="font-size:0.75rem;color:#6b7280">{{ $r->created_at->format('M d, Y') }}</td>
-                    </tr>
-                    @empty
-                    <tr>
-                        <td colspan="7" class="text-center py-5 text-muted">
-                            <i class="bi bi-hourglass-split d-block mb-2" style="font-size:2rem;opacity:0.3"></i>
-                            No published results yet. Results will appear here once released by your teacher.
-                        </td>
-                    </tr>
-                    @endforelse
-                </tbody>
-            </table>
+        @if(!$selectedYear)
+        <div class="text-center py-5 text-muted">
+            <i class="bi bi-calendar-x d-block mb-2" style="font-size:2rem;opacity:0.3"></i>
+            <div class="small">No academic year is set as current. Ask your admin to mark the current year.</div>
         </div>
-        @if($results->hasPages())
-        <div class="p-3 border-top">{{ $results->links() }}</div>
+        @else
+            @if($selectedSemester === null || $selectedSemester === 1)
+            <div class="semester-block {{ ($selectedSemester === null) ? 'border-bottom' : '' }}">
+                <div class="semester-header">
+                    <i class="bi bi-1-circle-fill me-2" style="color:var(--royal,#3730a3)"></i>
+                    <strong>Semester 1</strong>
+                    <span class="badge bg-light text-dark ms-2">{{ $sem1Results->count() }} exam{{ $sem1Results->count() !== 1 ? 's' : '' }}</span>
+                </div>
+                @include('student.results._results_table', ['rows' => $sem1Results, 'prefix' => 'sem1'])
+            </div>
+            @endif
+
+            @if($selectedSemester === null || $selectedSemester === 2)
+            <div class="semester-block">
+                <div class="semester-header">
+                    <i class="bi bi-2-circle-fill me-2" style="color:var(--royal,#3730a3)"></i>
+                    <strong>Semester 2</strong>
+                    <span class="badge bg-light text-dark ms-2">{{ $sem2Results->count() }} exam{{ $sem2Results->count() !== 1 ? 's' : '' }}</span>
+                </div>
+                @include('student.results._results_table', ['rows' => $sem2Results, 'prefix' => 'sem2'])
+            </div>
+            @endif
         @endif
     </div>
 </div>
 
-{{-- Academic history accordion --}}
+{{-- Academic history (past years only) --}}
 @if(count($history) > 0)
 <div class="card mt-3">
     <div class="card-header"><i class="bi bi-calendar3 me-2"></i>Academic Year History</div>
     <div class="card-body p-0">
-        @foreach($history as $h)
+        @foreach($history as $hi => $h)
         <div class="p-3 {{ !$loop->last ? 'border-bottom' : '' }}">
             <div class="d-flex align-items-center gap-2 mb-2">
                 <span class="badge" style="background:var(--royal,#3730a3);color:#fff">{{ $h['record']->academicYear->name ?? '—' }}</span>
@@ -145,10 +122,24 @@
             @if($h['results']->count())
             <div class="table-responsive">
                 <table class="table table-sm mb-0" style="font-size:0.79rem">
-                    <thead><tr><th>Exam</th><th>Score</th><th>%</th><th>Status</th></tr></thead>
+                    <thead>
+                        <tr>
+                            <th style="width:28px"></th>
+                            <th>Exam</th>
+                            <th>Score</th>
+                            <th>%</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
                     <tbody>
                         @foreach($h['results'] as $er)
-                        <tr>
+                        @php $histCollapseId = 'hist-review-'.$hi.'-'.$er->id; @endphp
+                        <tr class="result-row" data-bs-toggle="collapse" data-bs-target="#{{ $histCollapseId }}"
+                            aria-expanded="false" aria-controls="{{ $histCollapseId }}"
+                            style="cursor:pointer">
+                            <td class="text-center">
+                                <i class="bi bi-chevron-down result-expand-icon text-muted"></i>
+                            </td>
                             <td>{{ $er->exam->title ?? '—' }}</td>
                             <td>{{ $er->obtained_marks }}/{{ $er->total_marks }}</td>
                             <td>{{ $er->percentage }}%</td>
@@ -160,6 +151,19 @@
                                 @else
                                     <span class="badge bg-danger" style="font-size:0.65rem">Failed</span>
                                 @endif
+                            </td>
+                        </tr>
+                        <tr class="result-detail-row">
+                            <td colspan="5" class="p-0 border-0">
+                                <div id="{{ $histCollapseId }}" class="collapse">
+                                    <div class="result-review-panel">
+                                        <div class="d-flex align-items-center gap-2 mb-3">
+                                            <i class="bi bi-eye-fill" style="color:var(--blc-gold,#d4a51c)"></i>
+                                            <span style="font-weight:700;color:var(--blc-navy,#0b2a5b)">Answer Review</span>
+                                        </div>
+                                        @include('student.results._answer_review', ['result' => $er])
+                                    </div>
+                                </div>
                             </td>
                         </tr>
                         @endforeach
@@ -176,3 +180,78 @@
 @endif
 
 @endsection
+
+@push('styles')
+<style>
+.semester-header {
+    padding: 0.75rem 1.1rem;
+    background: #f8faff;
+    border-bottom: 1px solid #e8edf5;
+    font-size: 0.9rem;
+    color: var(--blc-navy, #0b2a5b);
+    display: flex;
+    align-items: center;
+}
+.semester-block + .semester-block .semester-header {
+    border-top: 1px solid #e8edf5;
+}
+
+.result-row:hover { background:#f8faff; }
+.result-row[aria-expanded="true"] { background:#f0f4ff; }
+.result-row[aria-expanded="true"] .result-expand-icon { transform: rotate(180deg); }
+.result-expand-icon { transition: transform 0.2s ease; display:inline-block; }
+
+.result-review-panel {
+    padding: 1rem 1.25rem 1.25rem;
+    background: #fafbfd;
+    border-top: 1px solid #e8edf5;
+    border-bottom: 1px solid #e8edf5;
+}
+
+.review-card {
+    border-radius: 12px;
+    padding: 1rem 1.1rem;
+    margin-bottom: 0.85rem;
+    border: 1.5px solid #e8edf5;
+    background: #fff;
+}
+.review-card:last-child { margin-bottom: 0; }
+.review-correct { background: #f0fdf4; border-color: #bbf7d0; }
+.review-wrong   { background: #fef2f2; border-color: #fecaca; }
+
+.student-answer-pill {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.82rem;
+    font-weight: 600;
+}
+.student-answer-pill.correct { background: #dcfce7; color: #166534; }
+.student-answer-pill.wrong   { background: #fee2e2; color: #991b1b; }
+
+.q-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    background: var(--blc-navy, #0b2a5b);
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 800;
+    flex-shrink: 0;
+}
+</style>
+@endpush
+
+@push('scripts')
+<script>
+document.querySelectorAll('.result-row').forEach(row => {
+    const target = document.querySelector(row.getAttribute('data-bs-target'));
+    if (!target) return;
+    target.addEventListener('show.bs.collapse', () => row.setAttribute('aria-expanded', 'true'));
+    target.addEventListener('hide.bs.collapse', () => row.setAttribute('aria-expanded', 'false'));
+});
+</script>
+@endpush

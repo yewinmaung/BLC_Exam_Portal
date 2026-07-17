@@ -150,8 +150,14 @@
 
         {{-- User badge --}}
         <div class="sidebar-user">
-            <div class="sidebar-user-avatar">
-                {{ strtoupper(substr(auth()->user()->name, 0, 1)) }}
+            @php $sidebarPhotoUrl = auth()->user()->profilePhotoUrl(); @endphp
+            <div class="sidebar-user-avatar"
+                 @if($sidebarPhotoUrl)
+                     style="background-image:url('{{ $sidebarPhotoUrl }}');background-size:cover;background-position:center;"
+                 @endif>
+                @if(!$sidebarPhotoUrl)
+                    {{ strtoupper(substr(auth()->user()->name, 0, 1)) }}
+                @endif
             </div>
             <div class="sidebar-user-info">
                 <div class="name">{{ auth()->user()->name }}</div>
