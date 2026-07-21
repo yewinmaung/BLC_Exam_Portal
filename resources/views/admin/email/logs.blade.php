@@ -4,7 +4,7 @@
 @section('breadcrumbs')
     @include('partials.breadcrumbs', ['items' => [
         ['label' => 'Admin', 'url' => route('admin.dashboard')],
-        ['label' => 'Email', 'url' => route('admin.email.index')],
+       
         ['label' => 'Logs'],
     ]])
 @endsection

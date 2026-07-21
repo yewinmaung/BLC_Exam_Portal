@@ -374,7 +374,7 @@
             <div class="field-group">
                 <div class="pw-label-row">
                     <label class="field-label" for="password">Password</label>
-                    <a href="#" class="forgot-link">Forgot password?</a>
+                    <a href="{{ route('forgot-password') }}" class="forgot-link">Forgot password?</a>
                 </div>
                 <div class="field-input-wrap">
                     <input type="password" id="password" name="password" class="field-input"

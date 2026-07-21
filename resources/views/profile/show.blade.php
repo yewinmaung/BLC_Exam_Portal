@@ -102,17 +102,6 @@
 }
 .pw-toggle-btn:hover { color: var(--blc-royal, #2d27a0); }
 
-/* OTP inputs */
-.otp-group { display: flex; gap: 0.5rem; justify-content: center; margin: 1rem 0; }
-.otp-digit {
-    width: 48px; height: 56px;
-    text-align: center; font-size: 1.4rem; font-weight: 800;
-    border: 2px solid #d0d8e8; border-radius: 10px;
-    outline: none; transition: border-color .18s;
-    font-family: 'Inter', sans-serif;
-}
-.otp-digit:focus { border-color: var(--blc-royal, #2d27a0); box-shadow: 0 0 0 3px rgba(45,39,160,0.12); }
-
 /* Status messages inside the card */
 .inline-alert { border-radius: 8px; padding: 0.65rem 1rem; font-size: 0.83rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.4rem; }
 .inline-alert.success { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
@@ -207,10 +196,9 @@
         </div>
         <div class="section-card-body">
 
-            {{-- Step 1: enter new password --}}
-            <div id="stepPassword">
+            <div id="passwordForm">
                 <p class="text-muted" style="font-size:0.83rem;margin-bottom:1.25rem;">
-                    Enter your new password below. You will receive a verification code by email before the change is applied.
+                    Enter and confirm your new password below. A confirmation email will be sent after the change is applied.
                 </p>
 
                 <div class="mb-3">
@@ -245,39 +233,8 @@
 
                 <div id="pwStepMsg"></div>
 
-                <button type="button" class="btn btn-primary w-100" id="btnSendOtp" style="font-weight:700;">
-                    <i class="bi bi-envelope me-1"></i> Send Verification Code
-                </button>
-            </div>
-
-            {{-- Step 2: OTP entry (hidden until OTP sent) --}}
-            <div id="stepOtp" style="display:none;">
-                <div class="inline-alert info" id="otpInfoMsg">
-                    <i class="bi bi-envelope-check"></i>
-                    <span>A 6-digit code was sent to <strong>{{ $user->email }}</strong>. It expires in 5 minutes.</span>
-                </div>
-
-                <p class="text-center" style="font-size:0.83rem;color:#6b7280;margin-bottom:0.5rem;">Enter the code:</p>
-                <div class="otp-group" id="otpGroup">
-                    <input type="text" class="otp-digit" maxlength="1" inputmode="numeric" pattern="[0-9]">
-                    <input type="text" class="otp-digit" maxlength="1" inputmode="numeric" pattern="[0-9]">
-                    <input type="text" class="otp-digit" maxlength="1" inputmode="numeric" pattern="[0-9]">
-                    <input type="text" class="otp-digit" maxlength="1" inputmode="numeric" pattern="[0-9]">
-                    <input type="text" class="otp-digit" maxlength="1" inputmode="numeric" pattern="[0-9]">
-                    <input type="text" class="otp-digit" maxlength="1" inputmode="numeric" pattern="[0-9]">
-                </div>
-
-                <div id="otpStepMsg" style="min-height:32px;"></div>
-
-                <button type="button" class="btn btn-primary w-100 mb-2" id="btnVerifyOtp" style="font-weight:700;">
-                    <i class="bi bi-check2-circle me-1"></i> Verify & Change Password
-                </button>
-                <button type="button" class="btn btn-link w-100" id="btnResend" style="font-size:0.82rem;color:#6b7280;">
-                    Resend code (<span id="resendCountdown">60</span>s)
-                </button>
-                <button type="button" class="btn btn-link w-100 p-0" id="btnBackToPassword"
-                        style="font-size:0.79rem;color:#9ca3af;">
-                    ← Use a different password
+                <button type="button" class="btn btn-primary w-100" id="btnChangePassword" style="font-weight:700;">
+                    <i class="bi bi-shield-lock-fill me-1"></i> Change Password
                 </button>
             </div>
 
@@ -319,12 +276,10 @@
 <script>
 // Pass Blade vars into the profile JS — MUST be defined before profile.js loads
 window.PROFILE_CONFIG = {
-    photoUrl:   "{{ route('profile.photo') }}",
-    otpUrl:     "{{ route('profile.otp.request') }}",
-    verifyUrl:  "{{ route('profile.otp.verify') }}",
-    resendUrl:  "{{ route('profile.otp.resend') }}",
-    csrf:       "{{ csrf_token() }}",
-    hasPhoto:   {{ $user->profile_photo ? 'true' : 'false' }},
+    photoUrl:     "{{ route('profile.photo') }}",
+    passwordUrl:  "{{ route('profile.password') }}",
+    csrf:         "{{ csrf_token() }}",
+    hasPhoto:     {{ $user->profile_photo ? 'true' : 'false' }},
 };
 
 // Password show/hide toggle — same pattern as login page

@@ -1,8 +1,8 @@
 /**
- * profile.js — Profile page: photo cropper + OTP password change
+ * profile.js — Profile page: photo cropper + password change
  *
  * Reads window.PROFILE_CONFIG (set inline in profile/show.blade.php):
- *   photoUrl, otpUrl, verifyUrl, resendUrl, csrf, hasPhoto
+ *   photoUrl, passwordUrl, csrf, hasPhoto
  *
  * Dependencies: Bootstrap 5 (bundled), Bootstrap Icons (CSS only)
  * No external cropper library — pure Canvas API.
@@ -289,20 +289,17 @@
     });
 
     /* ════════════════════════════════════════════════════════════════
-       Step 1 — Request OTP
+       Change Password
     ════════════════════════════════════════════════════════════════ */
-    const stepPassword = document.getElementById('stepPassword');
-    const stepOtp      = document.getElementById('stepOtp');
-    const btnSendOtp   = document.getElementById('btnSendOtp');
-    const pwStepMsg    = document.getElementById('pwStepMsg');
+    const btnChangePassword = document.getElementById('btnChangePassword');
+    const pwStepMsg         = document.getElementById('pwStepMsg');
 
-    btnSendOtp?.addEventListener('click', async function () {
+    btnChangePassword?.addEventListener('click', async function () {
         clearMsg(pwStepMsg);
 
-        const pw  = newPassword?.value  || '';
+        const pw  = newPassword?.value     || '';
         const cpw = confirmPassword?.value || '';
 
-        // Client-side validation
         if (pw.length < 8) {
             showMsg(pwStepMsg, 'error', 'Password must be at least 8 characters.');
             return;
@@ -316,97 +313,16 @@
             return;
         }
 
-        btnSendOtp.disabled = true;
-        btnSendOtp.innerHTML = '<span class="spinner-sm"></span> Sending…';
+        btnChangePassword.disabled = true;
+        btnChangePassword.innerHTML = '<span class="spinner-sm"></span> Changing…';
 
         try {
-            const { ok, data } = await apiFetch(C.otpUrl, {
+            const { ok, data } = await apiFetch(C.passwordUrl, {
                 password:              pw,
                 password_confirmation: cpw,
             });
 
-            if (ok && data.sent) {
-                stepPassword.style.display = 'none';
-                stepOtp.style.display      = 'block';
-                startResendTimer();
-                document.querySelector('.otp-digit')?.focus();
-                // Don't restore button — it's hidden now
-                return;
-            } else {
-                const msg = data.errors
-                    ? Object.values(data.errors).flat().join(' ')
-                    : (data.message || 'Failed to send code. Please try again.');
-                showMsg(pwStepMsg, 'error', msg);
-            }
-        } catch (e) {
-            showMsg(pwStepMsg, 'error', 'Network error. Please try again.');
-        }
-
-        btnSendOtp.disabled = false;
-        btnSendOtp.innerHTML = '<i class="bi bi-envelope me-1"></i> Send Verification Code';
-    });
-
-    /* ════════════════════════════════════════════════════════════════
-       OTP digit inputs — keyboard navigation
-    ════════════════════════════════════════════════════════════════ */
-    const otpDigits = Array.from(document.querySelectorAll('.otp-digit'));
-
-    otpDigits.forEach((input, idx) => {
-        input.addEventListener('input', function () {
-            // Only keep digits
-            this.value = this.value.replace(/\D/g, '').slice(-1);
-            if (this.value && idx < otpDigits.length - 1) {
-                otpDigits[idx + 1].focus();
-            }
-        });
-        input.addEventListener('keydown', function (e) {
-            if (e.key === 'Backspace' && !this.value && idx > 0) {
-                otpDigits[idx - 1].focus();
-            }
-        });
-        input.addEventListener('paste', function (e) {
-            e.preventDefault();
-            const pasted = (e.clipboardData || window.clipboardData)
-                .getData('text').replace(/\D/g, '').slice(0, 6);
-            pasted.split('').forEach((ch, i) => {
-                if (otpDigits[i]) otpDigits[i].value = ch;
-            });
-            otpDigits[Math.min(pasted.length, 5)].focus();
-        });
-    });
-
-    function getOtpCode() {
-        return otpDigits.map(d => d.value).join('');
-    }
-
-    function clearOtpInputs() {
-        otpDigits.forEach(d => { d.value = ''; });
-        otpDigits[0]?.focus();
-    }
-
-    /* ════════════════════════════════════════════════════════════════
-       Step 2 — Verify OTP
-    ════════════════════════════════════════════════════════════════ */
-    const btnVerifyOtp = document.getElementById('btnVerifyOtp');
-    const otpStepMsg   = document.getElementById('otpStepMsg');
-
-    btnVerifyOtp?.addEventListener('click', async function () {
-        clearMsg(otpStepMsg);
-        const code = getOtpCode();
-
-        if (code.length < 6) {
-            showMsg(otpStepMsg, 'error', 'Please enter all 6 digits.');
-            return;
-        }
-
-        btnVerifyOtp.disabled = true;
-        btnVerifyOtp.innerHTML = '<span class="spinner-sm"></span> Verifying…';
-
-        try {
-            const { ok, data } = await apiFetch(C.verifyUrl, { code });
-
             if (ok && data.success) {
-                // Success — show confirmation and reset the entire password section
                 const passwordSection = document.querySelector('.section-card-body');
                 if (passwordSection) {
                     passwordSection.innerHTML = `
@@ -418,84 +334,19 @@
                             A confirmation email has been sent to your registered address.
                         </p>`;
                 }
-                return; // Stop further processing
-            } else {
-                const msg = data.error || data.message || 'Verification failed.';
-                showMsg(otpStepMsg, 'error', msg);
-                clearOtpInputs();
+                return;
             }
+
+            const msg = data.errors
+                ? Object.values(data.errors).flat().join(' ')
+                : (data.error || data.message || 'Failed to change password. Please try again.');
+            showMsg(pwStepMsg, 'error', msg);
         } catch (e) {
-            showMsg(otpStepMsg, 'error', 'Network error. Please try again.');
+            showMsg(pwStepMsg, 'error', 'Network error. Please try again.');
         }
 
-        // Only re-enable if we didn't succeed (success replaced the DOM)
-        btnVerifyOtp.disabled = false;
-        btnVerifyOtp.innerHTML = '<i class="bi bi-check2-circle me-1"></i> Verify & Change Password';
-    });
-
-    /* ════════════════════════════════════════════════════════════════
-       Resend timer + button
-    ════════════════════════════════════════════════════════════════ */
-    const btnResend        = document.getElementById('btnResend');
-    const resendCountdown  = document.getElementById('resendCountdown');
-    let resendInterval     = null;
-
-    function startResendTimer() {
-        let secs = 60;
-        if (resendCountdown) resendCountdown.textContent = secs;
-        if (btnResend) {
-            btnResend.disabled = true;
-            btnResend.style.color = '#9ca3af';
-        }
-        clearInterval(resendInterval);
-        resendInterval = setInterval(() => {
-            secs--;
-            if (resendCountdown) resendCountdown.textContent = secs;
-            if (secs <= 0) {
-                clearInterval(resendInterval);
-                if (btnResend) {
-                    btnResend.disabled = false;
-                    btnResend.innerHTML = 'Resend code';
-                    btnResend.style.color = 'var(--blc-royal, #2d27a0)';
-                }
-            }
-        }, 1000);
-    }
-
-    btnResend?.addEventListener('click', async function () {
-        clearMsg(otpStepMsg);
-        this.disabled = true;
-
-        try {
-            const { ok, data } = await apiFetch(C.resendUrl, {});
-            if (ok && data.sent) {
-                showMsg(otpStepMsg, 'info', 'A new code has been sent to your email.');
-                clearOtpInputs();
-                startResendTimer();
-            } else {
-                showMsg(otpStepMsg, 'error', data.error || 'Could not resend. Please try again.');
-                this.disabled = false;
-            }
-        } catch (e) {
-            showMsg(otpStepMsg, 'error', 'Network error.');
-            this.disabled = false;
-        }
-    });
-
-    /* ════════════════════════════════════════════════════════════════
-       Back button (use different password)
-    ════════════════════════════════════════════════════════════════ */
-    document.getElementById('btnBackToPassword')?.addEventListener('click', function () {
-        clearInterval(resendInterval);
-        stepOtp.style.display      = 'none';
-        stepPassword.style.display = 'block';
-        clearMsg(pwStepMsg);
-        clearMsg(otpStepMsg);
-        clearOtpInputs();
-        if (newPassword)     newPassword.value     = '';
-        if (confirmPassword) confirmPassword.value = '';
-        if (pwStrengthBar) { pwStrengthBar.style.width = '0%'; }
-        if (pwHint)          pwHint.textContent    = '';
+        btnChangePassword.disabled = false;
+        btnChangePassword.innerHTML = '<i class="bi bi-shield-lock-fill me-1"></i> Change Password';
     });
 
 })();

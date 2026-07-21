@@ -196,6 +196,389 @@ class EmailController extends Controller
         return back()->with('success', 'Email queued for retry.');
     }
 
+    // ── Inbox ────────────────────────────────────────────────────────
+
+    /**
+     * Inbox list — paginated, searchable, with unread badge count.
+     */
+    public function inbox(Request $request)
+    {
+        $query = \App\Models\InboxEmail::latest('received_at');
+
+        if ($request->filled('search')) {
+            $s = $request->input('search');
+            $query->where(function ($q) use ($s) {
+                $q->where('from_email', 'like', '%'.$s.'%')
+                  ->orWhere('from_name',  'like', '%'.$s.'%')
+                  ->orWhere('subject',    'like', '%'.$s.'%');
+            });
+        }
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->input('status'));
+        }
+
+        $emails      = $query->paginate(25)->withQueryString();
+        $unreadCount = \App\Models\InboxEmail::where('status', 'unread')->count();
+
+        return view('admin.email.inbox', compact('emails', 'unreadCount'));
+    }
+
+    /**
+     * Show a single inbox email. Automatically marks it as read.
+     */
+    public function showInbox(\App\Models\InboxEmail $inboxEmail)
+    {
+        if ($inboxEmail->status === 'unread') {
+            $inboxEmail->update(['status' => 'read']);
+        }
+
+        return view('admin.email.inbox.show', compact('inboxEmail'));
+    }
+
+    /**
+     * Mark a single inbox email as read (AJAX-friendly POST).
+     */
+    public function markInboxRead(\App\Models\InboxEmail $inboxEmail)
+    {
+        $inboxEmail->update(['status' => 'read']);
+
+        return back()->with('success', 'Marked as read.');
+    }
+
+    /**
+     * Reply to an inbox email.
+     * Uses existing EmailService::send() + SendEmailJob — no new sending logic.
+     * Creates an email_logs record automatically via EmailService.
+     * Updates inbox_emails: status=replied, replied_by, replied_at.
+     */
+    public function replyInbox(Request $request, \App\Models\InboxEmail $inboxEmail)
+    {
+        $request->validate([
+            'reply_body' => ['required', 'string', 'min:5'],
+            'subject'    => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $subject = $request->input('subject')
+            ?: 'Re: ' . $inboxEmail->subject;
+
+        $bodyHtml = nl2br(e($request->input('reply_body')));
+
+        // Use existing EmailService — not touched
+        $this->emailService->send(
+            $inboxEmail->from_email,
+            $inboxEmail->from_name ?: '',
+            $subject,
+            $bodyHtml,
+            'inbox_reply',
+            null,
+            auth()->id(),
+            true,           // queued via SendEmailJob
+            'inbox_reply'
+        );
+
+        // Update inbox record
+        $inboxEmail->update([
+            'status'     => 'replied',
+            'replied_by' => auth()->id(),
+            'replied_at' => now(),
+        ]);
+
+        $this->activityLog->log(
+            'inbox_reply_sent',
+            "Replied to inbox email #{$inboxEmail->id} from {$inboxEmail->from_email}"
+        );
+
+        return redirect()->route('admin.email.inbox')
+            ->with('success', "Reply queued for delivery to {$inboxEmail->from_email}.");
+    }
+
+    /**
+     * Archive an inbox email (soft-archive via status change, no DB delete).
+     */
+    public function archiveInbox(\App\Models\InboxEmail $inboxEmail)
+    {
+        $inboxEmail->update(['status' => 'archived']);
+
+        $this->activityLog->log('inbox_archived', "Archived inbox email #{$inboxEmail->id}");
+
+        return redirect()->route('admin.email.inbox')
+            ->with('success', 'Email archived.');
+    }
+
+    // ── Compose ──────────────────────────────────────────────────────
+
+    /**
+     * The list of variables that EmailService::resolveUserVars() and the system
+     * provide automatically — these do NOT need a manual input field.
+     */
+    private const AUTO_VARS = [
+        'student_name', 'teacher_name', 'name', 'email', 'student_id',
+        'app_name', 'app_url', 'year',
+        'year_level', 'academic_year', 'department', 'major', 'semester',
+        'course_name', 'courses',
+    ];
+
+    /**
+     * Scan a template's subject + body_html for {{variable}} tokens.
+     * Returns an array of unique variable key names found.
+     */
+    private function extractTemplateVariables(EmailTemplate $template): array
+    {
+        $haystack = $template->subject . ' ' . $template->body_html;
+        preg_match_all('/\{\{\s*(\w+)\s*\}\}/', $haystack, $matches);
+        return array_values(array_unique($matches[1]));
+    }
+
+    public function compose()
+    {
+        $templates = EmailTemplate::where('is_active', true)->orderBy('name')->get()
+            ->map(function (EmailTemplate $t) {
+                $allVars    = $this->extractTemplateVariables($t);
+                $manualVars = array_values(array_diff($allVars, self::AUTO_VARS));
+                $autoVars   = array_values(array_intersect($allVars, self::AUTO_VARS));
+
+                // Attach as transient properties — not persisted
+                $t->all_vars    = $allVars;
+                $t->manual_vars = $manualVars; // admin must fill these
+                $t->auto_vars   = $autoVars;   // resolved automatically
+
+                return $t;
+            });
+
+        $groups = ScheduledEmail::$recipientLabels;
+
+        return view('admin.email.compose', compact('templates', 'groups'));
+    }
+
+    /**
+     * AJAX endpoint — renders a template with provided vars and returns JSON.
+     * Used by the preview panel. Does NOT send email or create any log.
+     *
+     * POST /admin/email/compose/preview
+     * Body: template_slug, vars{key:value,...}, mode, to_email (optional)
+     * Returns: JSON { subject, body_html, recipient_info }
+     */
+    public function composePreview(Request $request)
+    {
+        $request->validate([
+            'template_slug' => ['required', 'string', 'exists:email_templates,slug'],
+            'vars'          => ['nullable', 'array'],
+            'vars.*'        => ['nullable', 'string', 'max:500'],
+            'mode'          => ['required', 'in:single,group'],
+            'to_email'      => ['nullable', 'email'],
+            'recipients'    => ['nullable', 'string'],
+        ]);
+
+        $template = EmailTemplate::where('slug', $request->input('template_slug'))->firstOrFail();
+        $adminVars = $request->input('vars', []);
+
+        // Build variable map: system vars + user vars (sample) + admin-provided vars
+        $systemVars = [
+            'app_name' => config('app.name'),
+            'app_url'  => config('app.url'),
+            'year'     => now()->year,
+        ];
+
+        $userVars = [];
+
+        if ($request->input('mode') === 'single' && $request->filled('to_email')) {
+            // Try to resolve a real user for the preview
+            $user = \App\Models\User::where('email', $request->input('to_email'))->first();
+            if ($user) {
+                $userVars = $this->emailService->resolveUserVars($user);
+            } else {
+                // Unknown recipient — use the email address as a placeholder
+                $userVars = [
+                    'student_name' => $request->input('to_email'),
+                    'teacher_name' => $request->input('to_email'),
+                    'name'         => $request->input('to_email'),
+                    'email'        => $request->input('to_email'),
+                ];
+            }
+        } elseif ($request->input('mode') === 'group' && $request->filled('recipients')) {
+            // Use the first resolved recipient as a sample for preview
+            $sampleUsers = $this->emailService->resolveRecipients($request->input('recipients'));
+            $sampleUser  = $sampleUsers->first();
+            if ($sampleUser) {
+                $userVars = $this->emailService->resolveUserVars($sampleUser);
+            }
+        }
+
+        // Merge order: system < user < admin (admin overrides everything)
+        $mergedVars = array_merge($systemVars, $userVars, $adminVars);
+
+        // Render using the existing EmailTemplate::render() — no changes to that method
+        $rendered = $template->render($mergedVars);
+
+        $recipientInfo = match($request->input('mode')) {
+            'single' => $request->input('to_email', '(no email entered)'),
+            'group'  => ScheduledEmail::$recipientLabels[$request->input('recipients', '')] ?? $request->input('recipients', ''),
+            default  => '',
+        };
+
+        return response()->json([
+            'subject'        => $rendered['subject'],
+            'body_html'      => $rendered['bodyHtml'],
+            'recipient_info' => $recipientInfo,
+            'is_sample'      => $request->input('mode') === 'group',
+        ]);
+    }
+
+    /**
+     * Handle a compose form submission.
+     *
+     * The hidden form fields (subject, body_html) already contain the fully-rendered
+     * content from the preview step — variables have been substituted.
+     *
+     * Single send: use the rendered content directly via EmailService::send().
+     * Group send:  re-render the raw template per recipient, merging admin-provided
+     *              vars with each user's auto-resolved vars, so every recipient gets
+     *              a personalised copy that matches what was shown in the preview.
+     */
+    public function sendCompose(Request $request)
+    {
+        $request->validate([
+            'mode'          => ['required', 'in:single,group'],
+            'to_email'      => ['required_if:mode,single', 'nullable', 'email'],
+            'recipients'    => ['required_if:mode,group', 'nullable', 'string'],
+            'subject'       => ['required', 'string', 'max:500'],
+            'body_html'     => ['required', 'string'],
+            'template_slug' => ['nullable', 'string', 'exists:email_templates,slug'],
+            'vars'          => ['nullable', 'array'],
+            'vars.*'        => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $adminVars    = $request->input('vars', []);
+        $templateSlug = $request->input('template_slug');
+
+        // ── Single recipient ──────────────────────────────────────────────
+        // The hidden fields already hold the rendered subject + body from the
+        // preview step, so send them exactly as-is.
+        if ($request->input('mode') === 'single') {
+
+            $this->emailService->send(
+                $request->input('to_email'),
+                '',
+                $request->input('subject'),   // rendered by preview
+                $request->input('body_html'), // rendered by preview
+                'compose',
+                $templateSlug,
+                auth()->id(),
+                true,       // queued
+                'compose'
+            );
+
+            $this->activityLog->log(
+                'compose_email_sent',
+                "Composed email to {$request->input('to_email')}"
+            );
+
+            return redirect()->route('admin.email.sent')
+                ->with('success', 'Email queued for delivery to ' . $request->input('to_email') . '.');
+        }
+
+        // ── Group send ────────────────────────────────────────────────────
+        // Re-render the raw template per recipient so each person gets their
+        // own personalised copy (student_name, email, etc. filled from DB).
+        // Admin-provided vars (exam_name, result, …) are merged in for all.
+        if ($templateSlug) {
+            $template = EmailTemplate::where('slug', $templateSlug)->first();
+        } else {
+            $template = null;
+        }
+
+        $systemVars = [
+            'app_name' => config('app.name'),
+            'app_url'  => config('app.url'),
+            'year'     => now()->year,
+        ];
+
+        $users = $this->emailService->resolveRecipients($request->input('recipients'));
+        $count = 0;
+
+        foreach ($users as $user) {
+            if (!$user->email) continue;
+
+            // Per-recipient user vars (name, email, year_level, course_name, …)
+            $userVars = $this->emailService->resolveUserVars($user);
+
+            // Merge order: system < user < admin (admin overrides everything)
+            $mergedVars = array_merge($systemVars, $userVars, $adminVars);
+
+            if ($template) {
+                // Render the template with merged vars for this specific recipient
+                $rendered = $template->render($mergedVars);
+                $subject  = $rendered['subject'];
+                $body     = $rendered['bodyHtml'];
+            } else {
+                // No template — substitute vars into the raw subject/body from the form
+                $subject = $this->emailService->substituteVars($request->input('subject'), $mergedVars);
+                $body    = $this->emailService->substituteVars($request->input('body_html'), $mergedVars);
+            }
+
+            $this->emailService->send(
+                $user->email,
+                $user->name,
+                $subject,
+                $body,
+                'compose',
+                $templateSlug,
+                $user->id,
+                true,       // queued
+                'compose'
+            );
+            $count++;
+        }
+
+        $this->activityLog->log(
+            'compose_bulk_sent',
+            "Composed bulk email to {$request->input('recipients')} ({$count} recipients)"
+        );
+
+        return redirect()->route('admin.email.sent')
+            ->with('success', "{$count} email(s) queued for delivery.");
+    }
+
+    // ── Sent ─────────────────────────────────────────────────────────
+
+    /**
+     * Show email_logs filtered to status = 'sent', with optional search.
+     */
+    public function sent(Request $request)
+    {
+        $query = EmailLog::where('status', 'sent')->latest('sent_at');
+
+        if ($request->filled('email')) {
+            $query->where('to_email', 'like', '%' . $request->input('email') . '%');
+        }
+        if ($request->filled('type')) {
+            $query->where('email_type', $request->input('type'));
+        }
+
+        $logs = $query->paginate(30)->withQueryString();
+
+        return view('admin.email.sent', compact('logs'));
+    }
+
+    // ── Outbox ───────────────────────────────────────────────────────
+
+    /**
+     * Pending emails from two sources:
+     *   1. email_logs where status = 'queued'  (dispatched but worker hasn't processed yet)
+     *   2. scheduled_emails where is_sent = false  (future-dated sends)
+     *
+     * Does NOT read the jobs table.
+     */
+    public function outbox()
+    {
+        $queued    = EmailLog::where('status', 'queued')->latest()->paginate(20, ['*'], 'queued_page');
+        $scheduled = ScheduledEmail::where('is_sent', false)->orderBy('send_at')->paginate(20, ['*'], 'sched_page');
+        $groups    = ScheduledEmail::$recipientLabels;
+
+        return view('admin.email.outbox', compact('queued', 'scheduled', 'groups'));
+    }
+
     // ── Bulk Email ───────────────────────────────────────────────────
 
     public function bulk()

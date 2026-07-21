@@ -3,8 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\SendPasswordChangedJob;
-use App\Jobs\SendProfileOtpJob;
-use App\Models\ProfileOtp;
 use App\Services\ActivityLogService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,10 +15,8 @@ use Illuminate\Validation\Rules\Password;
  *
  * Routes:
  *   GET  /profile                → show()          profile.show
- *   POST /profile/photo          → updatePhoto()   profile.photo
- *   POST /profile/otp/request    → otpRequest()    profile.otp.request
- *   POST /profile/otp/verify     → otpVerify()     profile.otp.verify
- *   POST /profile/otp/resend     → otpResend()     profile.otp.resend
+ *   POST /profile/photo          → updatePhoto()      profile.photo
+ *   POST /profile/password       → changePassword()   profile.password
  */
 class ProfileController extends Controller
 {
@@ -92,16 +88,16 @@ class ProfileController extends Controller
         ]);
     }
 
-    // ── OTP: Step 1 — request (send code) ────────────────────────────────
+    // ── Password change ───────────────────────────────────────────────────
 
     /**
-     * Validate the new password, generate an OTP, and dispatch the email.
+     * Validate and apply a new password for the authenticated user.
      *
-     * POST /profile/otp/request
+     * POST /profile/password
      * Body: { password, password_confirmation }
-     * Response: { sent: true }  |  422 with errors
+     * Response: { success: true }  |  422 with errors
      */
-    public function otpRequest(Request $request): JsonResponse
+    public function changePassword(Request $request): JsonResponse
     {
         $request->validate([
             'password' => [
@@ -111,116 +107,13 @@ class ProfileController extends Controller
             ],
         ]);
 
-        $user            = auth()->user();
-        $newPasswordHash = Hash::make($request->input('password'));
-
-        [, $plainCode] = ProfileOtp::generate($user, $newPasswordHash);
-
-        SendProfileOtpJob::dispatch($user->id, $plainCode);
-
-        $this->activityLog->log('profile_otp_requested', 'OTP requested for password change', $user);
-
-        return response()->json(['sent' => true]);
-    }
-
-    // ── OTP: Step 2 — verify and apply ───────────────────────────────────
-
-    /**
-     * Verify the 6-digit code, apply the new password, and send confirmation.
-     *
-     * POST /profile/otp/verify
-     * Body: { code }
-     * Response: { success: true }  |  422 / 429 with error
-     */
-    public function otpVerify(Request $request): JsonResponse
-    {
-        $request->validate([
-            'code' => ['required', 'string', 'size:6', 'regex:/^[0-9]{6}$/'],
-        ]);
-
         $user = auth()->user();
-        $otp  = ProfileOtp::latestForUser($user->id);
-
-        if (!$otp) {
-            return response()->json(['error' => 'No active verification code. Please request a new one.'], 422);
-        }
-
-        if (!$otp->isValid()) {
-            return response()->json(['error' => 'This code has expired or been used. Please request a new one.'], 422);
-        }
-
-        // Increment attempts before checking, to prevent timing attacks from revealing validity
-        $otp->increment('attempts');
-
-        if ($otp->attempts > 5) {
-            return response()->json(['error' => 'Too many incorrect attempts. Please request a new code.'], 429);
-        }
-
-        if (!$otp->checkCode($request->input('code'))) {
-            $remaining = 5 - $otp->attempts;
-            $msg = $remaining > 0
-                ? "Incorrect code. {$remaining} attempt(s) remaining."
-                : 'Too many incorrect attempts. Please request a new code.';
-            return response()->json(['error' => $msg], 422);
-        }
-
-        // ── Code is correct — apply the password change ──
-        $user->update(['password' => $otp->new_password_hash]);
-        $otp->update(['used_at' => now()]);
+        $user->update(['password' => Hash::make($request->input('password'))]);
 
         SendPasswordChangedJob::dispatch($user->id);
 
-        $this->activityLog->log('profile_password_changed', 'Password changed via OTP verification', $user);
+        $this->activityLog->log('profile_password_changed', 'Password changed from profile', $user);
 
         return response()->json(['success' => true]);
-    }
-
-    // ── OTP: Resend ───────────────────────────────────────────────────────
-
-    /**
-     * Regenerate a new OTP using the same pending password hash.
-     * Enforces a 60-second cooldown based on the previous OTP's created_at.
-     *
-     * POST /profile/otp/resend
-     * Response: { sent: true }  |  422 with error
-     */
-    public function otpResend(Request $request): JsonResponse
-    {
-        $user = auth()->user();
-
-        // Look for any OTP (including expired) to get the password hash
-        $previous = ProfileOtp::where('user_id', $user->id)
-            ->whereNull('used_at')
-            ->latest()
-            ->first();
-
-        if (!$previous) {
-            return response()->json(['error' => 'No pending password change. Please start over.'], 422);
-        }
-
-        // Enforce 60-second cooldown
-        if ($previous->created_at->diffInSeconds(now()) < 60) {
-            $wait = 60 - (int) $previous->created_at->diffInSeconds(now());
-            return response()->json(['error' => "Please wait {$wait} seconds before resending."], 422);
-        }
-
-        $newPasswordHash = $previous->new_password_hash;
-
-        // Invalidate old OTP and generate fresh one
-        ProfileOtp::where('user_id', $user->id)->whereNull('used_at')->delete();
-
-        $newOtp = ProfileOtp::create([
-            'user_id'           => $user->id,
-            'code_hash'         => \Illuminate\Support\Facades\Hash::make($plainCode = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT)),
-            'new_password_hash' => $newPasswordHash,
-            'attempts'          => 0,
-            'expires_at'        => now()->addMinutes(5),
-        ]);
-
-        SendProfileOtpJob::dispatch($user->id, $plainCode);
-
-        $this->activityLog->log('profile_otp_resent', 'OTP resent for password change', $user);
-
-        return response()->json(['sent' => true]);
     }
 }

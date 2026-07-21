@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Auth\ForgotPasswordController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProfileController;
@@ -24,6 +25,14 @@ Route::middleware('guest')->group(function () {
     Route::post('login', [AuthController::class, 'login']);
     Route::get('register', [AuthController::class, 'showRegister'])->name('register');
     Route::post('register', [AuthController::class, 'register']);
+
+    // ── Forgot Password (OTP-based reset) ──────────────────────────────────
+    Route::get('forgot-password',              [ForgotPasswordController::class, 'showEmailForm'])->name('forgot-password');
+    Route::post('forgot-password/send',        [ForgotPasswordController::class, 'sendOtp'])->name('forgot-password.send');
+    Route::get('forgot-password/verify',       [ForgotPasswordController::class, 'showVerifyForm'])->name('forgot-password.verify');
+    Route::post('forgot-password/check-otp',   [ForgotPasswordController::class, 'checkOtp'])->name('forgot-password.check-otp');
+    Route::post('forgot-password/verify',      [ForgotPasswordController::class, 'resetPassword'])->name('forgot-password.reset');
+    Route::post('forgot-password/resend',      [ForgotPasswordController::class, 'resendOtp'])->name('forgot-password.resend');
 });
 
 Route::post('logout', [AuthController::class, 'logout'])->middleware('auth')->name('logout');
@@ -38,9 +47,7 @@ Route::middleware(['auth', 'exam.session'])->group(function () {
     // ── Shared profile routes (all authenticated roles) ──
     Route::get('profile', [ProfileController::class, 'show'])->name('profile.show');
     Route::post('profile/photo', [ProfileController::class, 'updatePhoto'])->name('profile.photo');
-    Route::post('profile/otp/request', [ProfileController::class, 'otpRequest'])->name('profile.otp.request');
-    Route::post('profile/otp/verify', [ProfileController::class, 'otpVerify'])->name('profile.otp.verify');
-    Route::post('profile/otp/resend', [ProfileController::class, 'otpResend'])->name('profile.otp.resend');
+    Route::post('profile/password', [ProfileController::class, 'changePassword'])->name('profile.password');
 
     Route::prefix('admin')->middleware('role:admin')->name('admin.')->group(function () {
         Route::get('dashboard', [DashboardController::class, 'admin'])->name('dashboard');
@@ -68,9 +75,26 @@ Route::middleware(['auth', 'exam.session'])->group(function () {
 
         // ── Email Management ──
         Route::prefix('email')->name('email.')->group(function () {
+            // ── Dashboard (legacy — kept for backward compat) ──────────────
             Route::get('/',                                                         [\App\Http\Controllers\Admin\EmailController::class, 'index'])->name('index');
+
+            // ── New panel navigation ───────────────────────────────────────
+            Route::get('inbox',                                                     [\App\Http\Controllers\Admin\EmailController::class, 'inbox'])->name('inbox');
+            Route::get('inbox/{inboxEmail}',                                        [\App\Http\Controllers\Admin\EmailController::class, 'showInbox'])->name('inbox.show');
+            Route::post('inbox/{inboxEmail}/reply',                                 [\App\Http\Controllers\Admin\EmailController::class, 'replyInbox'])->name('inbox.reply');
+            Route::post('inbox/{inboxEmail}/read',                                  [\App\Http\Controllers\Admin\EmailController::class, 'markInboxRead'])->name('inbox.read');
+            Route::delete('inbox/{inboxEmail}',                                     [\App\Http\Controllers\Admin\EmailController::class, 'archiveInbox'])->name('inbox.archive');
+            Route::get('compose',                                                   [\App\Http\Controllers\Admin\EmailController::class, 'compose'])->name('compose');
+            Route::post('compose',                                                  [\App\Http\Controllers\Admin\EmailController::class, 'sendCompose'])->name('compose.send');
+            Route::post('compose/preview',                                          [\App\Http\Controllers\Admin\EmailController::class, 'composePreview'])->name('compose.preview');
+            Route::get('sent',                                                      [\App\Http\Controllers\Admin\EmailController::class, 'sent'])->name('sent');
+            Route::get('outbox',                                                    [\App\Http\Controllers\Admin\EmailController::class, 'outbox'])->name('outbox');
+
+            // ── SMTP ───────────────────────────────────────────────────────
             Route::get('smtp',                                                      [\App\Http\Controllers\Admin\EmailController::class, 'smtpSettings'])->name('smtp');
             Route::post('smtp',                                                     [\App\Http\Controllers\Admin\EmailController::class, 'smtpUpdate'])->name('smtp.update');
+
+            // ── Templates ─────────────────────────────────────────────────
             Route::get('templates',                                                 [\App\Http\Controllers\Admin\EmailController::class, 'templates'])->name('templates');
             Route::get('templates/create',                                          [\App\Http\Controllers\Admin\EmailController::class, 'createTemplate'])->name('templates.create');
             Route::post('templates',                                                [\App\Http\Controllers\Admin\EmailController::class, 'storeTemplate'])->name('templates.store');
@@ -78,9 +102,13 @@ Route::middleware(['auth', 'exam.session'])->group(function () {
             Route::put('templates/{template}',                                      [\App\Http\Controllers\Admin\EmailController::class, 'updateTemplate'])->name('templates.update');
             Route::delete('templates/{template}',                                   [\App\Http\Controllers\Admin\EmailController::class, 'destroyTemplate'])->name('templates.destroy');
             Route::get('templates/{template}/preview',                              [\App\Http\Controllers\Admin\EmailController::class, 'previewTemplate'])->name('templates.preview');
+
+            // ── Logs ──────────────────────────────────────────────────────
             Route::get('logs',                                                      [\App\Http\Controllers\Admin\EmailController::class, 'logs'])->name('logs');
             Route::get('logs/{log}',                                                [\App\Http\Controllers\Admin\EmailController::class, 'showLog'])->name('logs.show');
             Route::post('logs/{log}/retry',                                         [\App\Http\Controllers\Admin\EmailController::class, 'retryLog'])->name('logs.retry');
+
+            // ── Legacy hidden routes (kept, removed from nav) ──────────────
             Route::get('bulk',                                                      [\App\Http\Controllers\Admin\EmailController::class, 'bulk'])->name('bulk');
             Route::post('bulk',                                                     [\App\Http\Controllers\Admin\EmailController::class, 'sendBulk'])->name('bulk.send');
             Route::get('scheduled',                                                 [\App\Http\Controllers\Admin\EmailController::class, 'scheduled'])->name('scheduled');

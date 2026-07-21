@@ -129,33 +129,40 @@
         Email
     </div>
 
-    <a class="nav-link {{ request()->routeIs('admin.email.index') ? 'active' : '' }}"
-       href="{{ route('admin.email.index') }}">
-        <i class="bi bi-envelope-paper"></i> Email Dashboard
+    <a class="nav-link {{ request()->routeIs('admin.email.inbox') ? 'active' : '' }}"
+       href="{{ route('admin.email.inbox') }}">
+        <i class="bi bi-inbox"></i> Inbox
+    </a>
+    <a class="nav-link {{ request()->routeIs('admin.email.compose*') ? 'active' : '' }}"
+       href="{{ route('admin.email.compose') }}">
+        <i class="bi bi-pencil-square"></i> Compose
+    </a>
+    <a class="nav-link {{ request()->routeIs('admin.email.sent') ? 'active' : '' }}"
+       href="{{ route('admin.email.sent') }}">
+        <i class="bi bi-send-check-fill"></i> Sent
+    </a>
+    <a class="nav-link {{ request()->routeIs('admin.email.outbox') ? 'active' : '' }}"
+       href="{{ route('admin.email.outbox') }}">
+        <i class="bi bi-clock-history"></i> Outbox
+        @php
+            $outboxCount = \App\Models\EmailLog::where('status','queued')->count()
+                         + \App\Models\ScheduledEmail::where('is_sent', false)->count();
+        @endphp
+        @if($outboxCount > 0)
+        <span class="nav-badge ms-auto">{{ $outboxCount > 99 ? '99+' : $outboxCount }}</span>
+        @endif
+    </a>
+    <a class="nav-link {{ request()->routeIs('admin.email.logs*') ? 'active' : '' }}"
+       href="{{ route('admin.email.logs') }}">
+        <i class="bi bi-journal-text"></i> Logs
     </a>
     <a class="nav-link {{ request()->routeIs('admin.email.templates*') ? 'active' : '' }}"
        href="{{ route('admin.email.templates') }}">
         <i class="bi bi-file-earmark-code"></i> Templates
     </a>
-    <a class="nav-link {{ request()->routeIs('admin.email.logs*') ? 'active' : '' }}"
-       href="{{ route('admin.email.logs') }}">
-        <i class="bi bi-journal-text"></i> Email Logs
-    </a>
-    <a class="nav-link {{ request()->routeIs('admin.email.bulk*') ? 'active' : '' }}"
-       href="{{ route('admin.email.bulk') }}">
-        <i class="bi bi-send-check"></i> Bulk Email
-    </a>
-    <a class="nav-link {{ request()->routeIs('admin.email.scheduled*') ? 'active' : '' }}"
-       href="{{ route('admin.email.scheduled') }}">
-        <i class="bi bi-calendar-check"></i> Scheduled
-    </a>
-    <a class="nav-link {{ request()->routeIs('admin.email.test*') ? 'active' : '' }}"
-       href="{{ route('admin.email.test') }}">
-        <i class="bi bi-send"></i> Individual Email
-    </a>
     <a class="nav-link {{ request()->routeIs('admin.email.smtp*') ? 'active' : '' }}"
        href="{{ route('admin.email.smtp') }}">
-        <i class="bi bi-gear"></i> SMTP Settings
+        <i class="bi bi-gear"></i> SMTP
     </a>
 
 </nav>
