@@ -104,7 +104,7 @@
     <div class="card mb-4">
         <div class="card-header"><i class="bi bi-chat-text me-2"></i>Message</div>
         <div class="card-body p-0" style="background:#f4f6fb">
-            <iframe srcdoc="{{ e($inboxEmail->body_html) }}"
+            <iframe srcdoc="{{ $inboxEmail->body_html }}"
                     style="width:100%;border:none;min-height:360px;display:block"
                     sandbox="allow-same-origin"
                     title="Email Body"></iframe>

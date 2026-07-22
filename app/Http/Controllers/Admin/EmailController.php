@@ -8,6 +8,7 @@ use App\Models\EmailTemplate;
 use App\Models\ScheduledEmail;
 use App\Services\ActivityLogService;
 use App\Services\EmailService;
+use App\Services\InboxSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 
@@ -15,7 +16,8 @@ class EmailController extends Controller
 {
     public function __construct(
         private EmailService      $emailService,
-        private ActivityLogService $activityLog
+        private ActivityLogService $activityLog,
+        private InboxSyncService  $inboxSync
     ) {}
 
     // ── Dashboard ─────────────────────────────────────────────────────
@@ -304,6 +306,36 @@ class EmailController extends Controller
 
         return redirect()->route('admin.email.inbox')
             ->with('success', 'Email archived.');
+    }
+
+    /**
+     * Sync inbox from Gmail via IMAP.
+     * Fetches the most recent messages and stores new ones in inbox_emails.
+     * Existing records (matched by message_id) are skipped — no duplicates.
+     */
+    public function syncInbox(Request $request)
+    {
+        try {
+            $result = $this->inboxSync->sync();
+
+            $this->activityLog->log(
+                'inbox_synced',
+                "Inbox sync: {$result['imported']} imported, {$result['skipped']} skipped, {$result['errors']} errors."
+            );
+
+            if ($result['errors'] > 0 && $result['imported'] === 0) {
+                return redirect()->route('admin.email.inbox')
+                    ->withErrors(['error' => 'Sync failed: ' . $result['message']]);
+            }
+
+            return redirect()->route('admin.email.inbox')
+                ->with('success', $result['message']);
+
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('EmailController::syncInbox — ' . $e->getMessage());
+            return redirect()->route('admin.email.inbox')
+                ->withErrors(['error' => 'Sync error: ' . $e->getMessage()]);
+        }
     }
 
     // ── Compose ──────────────────────────────────────────────────────
@@ -712,3 +744,8 @@ class EmailController extends Controller
         file_put_contents($envPath, $envContent);
     }
 }
+
+
+
+
+

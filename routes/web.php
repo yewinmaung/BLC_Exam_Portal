@@ -17,6 +17,7 @@ use App\Http\Controllers\Admin\TeacherController as AdminTeacherController;
 use App\Http\Controllers\Teacher\ExamController as TeacherExamController;
 use App\Http\Controllers\Teacher\ProfileController as TeacherProfileController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Admin\EmailController;
 
 Route::get('/', fn () => view('welcome'))->name('home');
 
@@ -80,6 +81,7 @@ Route::middleware(['auth', 'exam.session'])->group(function () {
 
             // ── New panel navigation ───────────────────────────────────────
             Route::get('inbox',                                                     [\App\Http\Controllers\Admin\EmailController::class, 'inbox'])->name('inbox');
+            Route::post('inbox/sync',                                               [\App\Http\Controllers\Admin\EmailController::class, 'syncInbox'])->name('inbox.sync');
             Route::get('inbox/{inboxEmail}',                                        [\App\Http\Controllers\Admin\EmailController::class, 'showInbox'])->name('inbox.show');
             Route::post('inbox/{inboxEmail}/reply',                                 [\App\Http\Controllers\Admin\EmailController::class, 'replyInbox'])->name('inbox.reply');
             Route::post('inbox/{inboxEmail}/read',                                  [\App\Http\Controllers\Admin\EmailController::class, 'markInboxRead'])->name('inbox.read');

@@ -44,12 +44,14 @@ class GradingService
                 $obtainedMarks += $marks;
 
             } elseif ($question->type === 'fill_blank') {
-                // Compare student text answer against all accepted blank answers (case-insensitive)
-                $studentText = trim(strtolower($studentAnswer->answer_text ?? ''));
+                // Compare student text answer against all accepted blank answers (case-sensitive exact match).
+                // "A" only accepts "A"; "a" only accepts "a".
+                // Teachers who want both must add both as separate accepted answers.
+                $studentText = trim($studentAnswer->answer_text ?? '');
                 $acceptedAnswers = $question->answers()
                     ->where('is_blank_answer', true)
                     ->get()
-                    ->map(fn ($a) => strtolower(trim($a->decrypted_content ?? '')));
+                    ->map(fn ($a) => trim($a->decrypted_content ?? ''));
 
                 $correct = $studentText !== '' && $acceptedAnswers->contains($studentText);
                 $marks   = $correct ? $question->marks : 0;

@@ -60,6 +60,12 @@
             <span class="badge" style="background:#eef2ff;color:#3730a3">
                 {{ $emails->total() }} total
             </span>
+            <form method="POST" action="{{ route('admin.email.inbox.sync') }}" class="mb-0">
+                @csrf
+                <button type="submit" class="btn btn-sm btn-primary">
+                    <i class="bi bi-arrow-repeat me-1"></i>Sync Inbox
+                </button>
+            </form>
         </div>
     </div>
     <div class="card-body p-0">
