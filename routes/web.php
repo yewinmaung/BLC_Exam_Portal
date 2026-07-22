@@ -88,6 +88,7 @@ Route::middleware(['auth', 'exam.session'])->group(function () {
             Route::delete('inbox/{inboxEmail}',                                     [\App\Http\Controllers\Admin\EmailController::class, 'archiveInbox'])->name('inbox.archive');
             Route::get('compose',                                                   [\App\Http\Controllers\Admin\EmailController::class, 'compose'])->name('compose');
             Route::post('compose',                                                  [\App\Http\Controllers\Admin\EmailController::class, 'sendCompose'])->name('compose.send');
+            Route::post('compose/custom',                                           [\App\Http\Controllers\Admin\EmailController::class, 'sendCustom'])->name('compose.custom');
             Route::post('compose/preview',                                          [\App\Http\Controllers\Admin\EmailController::class, 'composePreview'])->name('compose.preview');
             Route::get('sent',                                                      [\App\Http\Controllers\Admin\EmailController::class, 'sent'])->name('sent');
             Route::get('outbox',                                                    [\App\Http\Controllers\Admin\EmailController::class, 'outbox'])->name('outbox');

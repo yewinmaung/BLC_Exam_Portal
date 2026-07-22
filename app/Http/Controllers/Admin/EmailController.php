@@ -575,6 +575,52 @@ class EmailController extends Controller
     // ── Sent ─────────────────────────────────────────────────────────
 
     /**
+     * Single-recipient custom email.
+     *
+     * Admin manually enters: to_email, subject, body (plain text).
+     * Body is injected into the branded manual-message.blade.php wrapper
+     * via view()->render() before being passed to EmailService::send(),
+     * which queues it through the existing SendEmailJob + SMTP flow.
+     *
+     * Does NOT use any EmailTemplate. Logs with email_type = 'manual'.
+     */
+    public function sendCustom(Request $request)
+    {
+        $data = $request->validate([
+            'to_email' => ['required', 'email', 'max:255'],
+            'subject'  => ['required', 'string', 'max:255'],
+            'body'     => ['required', 'string', 'max:10000'],
+        ]);
+
+        // Render the branded HTML wrapper — body is e() + nl2br'd inside the blade
+        $bodyHtml = view('emails.manual-message', [
+            'subject' => $data['subject'],
+            'body'    => $data['body'],
+            'sentAt'  => now(),
+        ])->render();
+
+        $this->emailService->send(
+            $data['to_email'],
+            '',                // recipient name unknown — to_email only
+            $data['subject'],
+            $bodyHtml,
+            'manual_compose',  // event
+            null,              // no template slug
+            auth()->id(),
+            true,              // queued via SendEmailJob
+            'manual'           // email_type
+        );
+
+        $this->activityLog->log(
+            'manual_email_sent',
+            "Admin sent manual email to {$data['to_email']} — Subject: {$data['subject']}"
+        );
+
+        return redirect()->route('admin.email.sent')
+            ->with('success', "Email queued for delivery to {$data['to_email']}.");
+    }
+
+    /**
      * Show email_logs filtered to status = 'sent', with optional search.
      */
     public function sent(Request $request)
