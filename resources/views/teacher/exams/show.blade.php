@@ -52,7 +52,7 @@
     </div>
 </div>
 
-{{-- ── Marks Progress Bar ───────────────────────────────────────────────── --}}
+{{-- ── Marks Progress Bar --}}
 @if(in_array($exam->status, ['draft', 'pending_approval']))
 @php
     $currentMarks  = $exam->questions->sum('marks');
@@ -157,7 +157,7 @@
                                         {{ $q->decrypted_content }}
                                     @endif
                                 @else
-                                    🔒 Encrypted
+                                     Encrypted
                                 @endif
                             </div>
 
