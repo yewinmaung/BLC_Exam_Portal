@@ -89,6 +89,7 @@ Route::middleware(['auth', 'exam.session'])->group(function () {
             Route::get('compose',                                                   [\App\Http\Controllers\Admin\EmailController::class, 'compose'])->name('compose');
             Route::post('compose',                                                  [\App\Http\Controllers\Admin\EmailController::class, 'sendCompose'])->name('compose.send');
             Route::post('compose/custom',                                           [\App\Http\Controllers\Admin\EmailController::class, 'sendCustom'])->name('compose.custom');
+            Route::post('compose/custom/preview',                                  [\App\Http\Controllers\Admin\EmailController::class, 'customPreview'])->name('compose.custom.preview');
             Route::post('compose/preview',                                          [\App\Http\Controllers\Admin\EmailController::class, 'composePreview'])->name('compose.preview');
             Route::get('sent',                                                      [\App\Http\Controllers\Admin\EmailController::class, 'sent'])->name('sent');
             Route::get('outbox',                                                    [\App\Http\Controllers\Admin\EmailController::class, 'outbox'])->name('outbox');
@@ -165,6 +166,7 @@ Route::middleware(['auth', 'exam.session'])->group(function () {
         Route::put('exams/{exam}/questions/{question}', [TeacherExamController::class, 'updateQuestion'])->name('exams.questions.update');
         Route::delete('exams/{exam}/questions/{question}', [TeacherExamController::class, 'deleteQuestion'])->name('exams.questions.destroy');
         Route::post('exams/{exam}/submit', [TeacherExamController::class, 'submitForApproval'])->name('exams.submit');
+        Route::delete('exams/{exam}', [TeacherExamController::class, 'destroy'])->name('exams.destroy');
         Route::get('exams/{exam}/results', [TeacherExamController::class, 'results'])->name('exams.results');
         Route::post('exams/{exam}/import', [TeacherExamController::class, 'importQuestions'])->name('exams.import');
 

@@ -49,9 +49,20 @@
                             </span>
                         </td>
                         <td>
-                            <a href="{{ route('teacher.exams.show', $e) }}" class="btn btn-sm btn-primary">
-                                <i class="bi bi-arrow-right me-1"></i>Open
-                            </a>
+                            <div class="d-flex gap-1">
+                                <a href="{{ route('teacher.exams.show', $e) }}" class="btn btn-sm btn-primary">
+                                    <i class="bi bi-arrow-right me-1"></i>Open
+                                </a>
+                                @if($e->status === 'draft')
+                                <form action="{{ route('teacher.exams.destroy', $e) }}" method="POST"
+                                      onsubmit="return confirm('Delete exam \"{{ addslashes($e->title) }}\"?\nThis will permanently remove all questions and cannot be undone.')">
+                                    @csrf @method('DELETE')
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete draft exam">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                                @endif
+                            </div>
                         </td>
                     </tr>
                     @empty

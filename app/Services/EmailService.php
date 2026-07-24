@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Jobs\SendEmailJob;
 use App\Models\EmailLog;
 use App\Models\EmailTemplate;
+use App\Models\Exam;
+use App\Models\ExamSchedule;
 use App\Models\ScheduledEmail;
 use App\Models\User;
 use App\Enums\RoleSlug;
@@ -188,7 +190,14 @@ class EmailService
     }
 
     /**
-     * Process all due scheduled emails.
+     * Process all due academic notification scheduled emails.
+     *
+     * For each due ScheduledEmail:
+     *  1. Resolve recipient students dynamically from StudentYearRecord
+     *     using the stored filter arrays (academic_years, year_levels, majors).
+     *  2. Load the selected exams with their latest published schedule.
+     *  3. Render the fixed academic-notification blade template per recipient.
+     *  4. Queue via the existing SendEmailJob / EmailService::send() flow.
      */
     public function processScheduled(): int
     {
@@ -199,19 +208,145 @@ class EmailService
         $total = 0;
 
         foreach ($due as $scheduled) {
-            $count = $this->sendBulk(
-                $scheduled->recipients,
-                $scheduled->subject,
-                $scheduled->body_html,
-                'scheduled',
-                $scheduled->template_slug
-            );
-
+            $count = $this->sendAcademicNotification($scheduled);
             $scheduled->update(['is_sent' => true, 'sent_at' => now()]);
             $total += $count;
         }
 
         return $total;
+    }
+
+    /**
+     * Send a single academic notification to all matching students.
+     *
+     * Recipients are resolved dynamically from StudentYearRecord — no IDs stored.
+     * Email HTML is rendered from the fixed academic-notification blade template.
+     */
+    public function sendAcademicNotification(ScheduledEmail $scheduled): int
+    {
+        // ── 1. Resolve recipient students ─────────────────────────────────
+        $students = $this->resolveAcademicRecipients(
+            $scheduled->filter_academic_years ?? [],
+            $scheduled->filter_year_levels    ?? [],
+            $scheduled->filter_majors         ?? []
+        );
+
+        if ($students->isEmpty()) {
+            logger()->info("processScheduled #{$scheduled->id}: no matching students found.");
+            return 0;
+        }
+
+        // ── 2. Load exams with schedules ──────────────────────────────────
+        $examIds = $scheduled->exam_ids ?? [];
+        $exams   = empty($examIds)
+            ? collect()
+            : Exam::with(['course', 'activeSchedule'])
+                ->whereIn('id', $examIds)
+                ->get();
+
+        // Build exam data array (static — same for all recipients)
+        $examData = $exams->map(fn (Exam $e) => $this->buildExamData($e))->values()->all();
+
+        // ── 3. Determine subject line by notification type ────────────────
+        $subjectMap = [
+            'exam_time'     => '[' . config('app.name') . '] Exam Schedule Notification',
+            'exam_policy'   => '[' . config('app.name') . '] Exam Policy & Instructions',
+            'exam_reminder' => '[' . config('app.name') . '] Exam Reminder',
+        ];
+        $subject = $subjectMap[$scheduled->notification_type] ?? '[' . config('app.name') . '] Academic Notification';
+
+        // ── 4. Queue one email per student ────────────────────────────────
+        $count = 0;
+
+        foreach ($students as $student) {
+            if (!$student->email) {
+                continue;
+            }
+
+            // Render the fixed blade template per recipient (personalised greeting)
+            $bodyHtml = view('emails.academic-notification', [
+                'notificationType' => $scheduled->notification_type,
+                'studentName'      => $student->name,
+                'exams'            => $examData,
+                'emailSubject'     => $subject,
+            ])->render();
+
+            $this->send(
+                $student->email,
+                $student->name,
+                $subject,
+                $bodyHtml,
+                'academic_notification',
+                null,        // no template_slug — uses blade directly
+                $student->id,
+                true,        // queued via SendEmailJob
+                'schedule'
+            );
+
+            $count++;
+        }
+
+        return $count;
+    }
+
+    /**
+     * Resolve students matching the given academic filter arrays.
+     *
+     * An empty filter array means "no restriction on that dimension".
+     * A student must match ALL provided filters (AND logic across dimensions).
+     */
+    public function resolveAcademicRecipients(
+        array $academicYearIds,
+        array $yearLevelIds,
+        array $majorIds
+    ): \Illuminate\Support\Collection {
+        $query = StudentYearRecord::query()
+            ->where('status', 'active')
+            ->with('student');
+
+        if (!empty($academicYearIds)) {
+            $query->whereIn('academic_year_id', $academicYearIds);
+        }
+
+        if (!empty($yearLevelIds)) {
+            $query->whereIn('year_level_id', $yearLevelIds);
+        }
+
+        // Major filter: StudentYearRecord stores major as a text string, not an FK.
+        // We join via the majors table using the name.
+        if (!empty($majorIds)) {
+            $majorNames = \App\Models\Major::whereIn('id', $majorIds)->pluck('name')->toArray();
+            if (!empty($majorNames)) {
+                $query->whereIn('major', $majorNames);
+            }
+        }
+
+        // Return unique active students (a student may have multiple SYR records)
+        return $query->get()
+            ->pluck('student')
+            ->filter(fn ($u) => $u && $u->is_active && $u->email)
+            ->unique('id')
+            ->values();
+    }
+
+    /**
+     * Build a normalised exam data array for the blade template.
+     */
+    private function buildExamData(Exam $exam): array
+    {
+        $schedule = $exam->activeSchedule ?? $exam->latestSchedule;
+
+        return [
+            'title'         => $exam->title,
+            'course'        => $exam->course?->title ?? '—',
+            'description'   => $exam->description ?? '',
+            'total_marks'   => $exam->total_marks,
+            'passing_marks' => $exam->passing_marks,
+            'date'          => $schedule?->starts_at?->format('d M Y') ?? null,
+            'time'          => $schedule?->starts_at?->format('h:i A') . ($schedule?->ends_at ? ' – ' . $schedule->ends_at->format('h:i A') : '') ?? null,
+            'duration'      => $schedule?->duration_minutes ?? null,
+            'room'          => null, // ExamSchedule has no room column; reserved for future use
+        ];
     }
 
     // ── SMTP Settings ────────────────────────────────────────────────

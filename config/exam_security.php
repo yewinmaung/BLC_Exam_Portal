@@ -12,8 +12,8 @@ return [
     | approval. After this window expires the attempt stays locked and
     | requires the normal admin review workflow.
     |
-    | Default: 600 seconds (10 minutes)
+    | Default: 600 seconds (5 minutes)
     */
-    'recovery_time_limit' => env('EXAM_RECOVERY_TIME_LIMIT', 600),
+    'recovery_time_limit' => env('EXAM_RECOVERY_TIME_LIMIT', 300),
 
 ];

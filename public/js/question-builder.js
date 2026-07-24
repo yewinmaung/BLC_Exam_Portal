@@ -214,11 +214,58 @@
         createBlankAnswerRow('');
     });
 
-    form.addEventListener('submit', () => {
-        if (qType.value !== 'fill_blank') {
+    form.addEventListener('submit', (e) => {
+        // Remove any previous inline error
+        const prev = form.querySelector('.qb-inline-error');
+        if (prev) prev.remove();
+
+        const type = qType.value;
+
+        if (type === 'fill_blank') {
+            // Must have at least one non-empty accepted answer
+            const filled = blankAnswersList
+                ? [...blankAnswersList.querySelectorAll('input[type="text"]')]
+                    .filter(i => i.value.trim() !== '')
+                : [];
+            if (filled.length === 0) {
+                e.preventDefault();
+                showInlineError('Please add at least one accepted answer before saving.');
+                addBlankAnswerBtn?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                return;
+            }
+        } else {
+            // MCQ / True-False: must have a correct radio selected AND that answer non-empty
             syncCorrectToHidden();
+            const selected = form.querySelector('input[name="correct_choice"]:checked');
+            if (!selected) {
+                e.preventDefault();
+                showInlineError('Please mark the correct answer before saving.');
+                answersBlock?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                return;
+            }
+            // Also verify the selected option has content
+            const selectedRow = answersList?.querySelector(
+                `input[type="text"][name="answers[${selected.value}][content]"]`
+            );
+            if (selectedRow && selectedRow.value.trim() === '') {
+                e.preventDefault();
+                showInlineError('The correct answer option cannot be empty.');
+                selectedRow.focus();
+                return;
+            }
         }
     });
+
+    function showInlineError(msg) {
+        const div = document.createElement('div');
+        div.className = 'qb-inline-error alert alert-danger d-flex align-items-center gap-2 mt-2 mb-0';
+        div.style.fontSize = '0.83rem';
+        div.innerHTML = '<i class="bi bi-exclamation-triangle-fill flex-shrink-0"></i><span>' + escHtml(msg) + '</span>';
+        // Insert before the Save button
+        const saveBtn = form.querySelector('button[type="submit"]');
+        if (saveBtn) saveBtn.before(div);
+        else form.appendChild(div);
+    }
 
     /* ════════════════════════════════════════
        Init

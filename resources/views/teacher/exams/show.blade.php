@@ -49,6 +49,15 @@
         <a href="{{ route('teacher.exams.results', $exam) }}" class="btn btn-outline-primary">
             <i class="bi bi-bar-chart me-1"></i> Results
         </a>
+        @if($exam->status === 'draft')
+        <form action="{{ route('teacher.exams.destroy', $exam) }}" method="POST"
+              onsubmit="return confirm('Delete exam \"{{ addslashes($exam->title) }}\"?\nAll questions will be permanently removed.')">
+            @csrf @method('DELETE')
+            <button type="submit" class="btn btn-outline-danger">
+                <i class="bi bi-trash me-1"></i> Delete Exam
+            </button>
+        </form>
+        @endif
     </div>
 </div>
 
@@ -221,6 +230,17 @@
         <div class="card">
             <div class="card-header"><i class="bi bi-plus-circle me-2"></i>Add Question</div>
             <div class="card-body">
+                @if(session('success'))
+                <div class="alert alert-success d-flex gap-2 align-items-center mb-3" style="font-size:.84rem">
+                    <i class="bi bi-check-circle-fill"></i><span>{{ session('success') }}</span>
+                </div>
+                @endif
+                @if($errors->any())
+                <div class="alert alert-danger d-flex align-items-start gap-2 mb-3" style="font-size:.83rem">
+                    <i class="bi bi-exclamation-triangle-fill mt-1 flex-shrink-0"></i>
+                    <div>@foreach($errors->all() as $err)<div>{{ $err }}</div>@endforeach</div>
+                </div>
+                @endif
                 <form method="POST" action="{{ route('teacher.exams.questions.store', $exam) }}" id="questionForm">@csrf
 
                     <div class="mb-3">
@@ -228,7 +248,7 @@
                         <select name="type" class="form-select" id="qType" required>
                             <option value="mcq">Multiple Choice (MCQ)</option>
                             <option value="true_false">True / False</option>
-                            <option value="essay">Essay (written answer)</option>
+                         
                             <option value="fill_blank">Fill in the Blank</option>
                         </select>
                     </div>

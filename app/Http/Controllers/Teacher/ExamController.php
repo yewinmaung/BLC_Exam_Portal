@@ -104,6 +104,33 @@ class ExamController extends Controller
             return back()->withErrors(['error' => 'Question text is required.']);
         }
 
+        // ── Correct answer validation ─────────────────────────────────────
+        if ($data['type'] === 'fill_blank') {
+            $validBlanks = array_filter(
+                $data['blank_answers'] ?? [],
+                fn($v) => trim($v ?? '') !== ''
+            );
+            if (empty($validBlanks)) {
+                return back()
+                    ->withInput()
+                    ->withErrors(['error' => 'Fill in the Blank questions require at least one accepted answer.']);
+            }
+        } else {
+            // MCQ and True/False: at least one answer with is_correct = true
+            $hasCorrect = false;
+            foreach ($data['answers'] ?? [] as $a) {
+                if (!empty($a['is_correct']) && trim($a['content'] ?? '') !== '') {
+                    $hasCorrect = true;
+                    break;
+                }
+            }
+            if (!$hasCorrect) {
+                return back()
+                    ->withInput()
+                    ->withErrors(['error' => 'Please mark at least one answer as correct before saving the question.']);
+            }
+        }
+
         $question = Question::create([
             'exam_id'           => $exam->id,
             'type'              => $data['type'],
@@ -171,6 +198,32 @@ class ExamController extends Controller
             'blank_answers.*'         => 'nullable|string',
         ]);
 
+        // ── Correct answer validation ─────────────────────────────────────
+        if ($data['type'] === 'fill_blank') {
+            $validBlanks = array_filter(
+                $data['blank_answers'] ?? [],
+                fn($v) => trim($v ?? '') !== ''
+            );
+            if (empty($validBlanks)) {
+                return back()
+                    ->withInput()
+                    ->withErrors(['error' => 'Fill in the Blank questions require at least one accepted answer.']);
+            }
+        } else {
+            $hasCorrect = false;
+            foreach ($data['answers'] ?? [] as $a) {
+                if (!empty($a['is_correct']) && trim($a['content'] ?? '') !== '') {
+                    $hasCorrect = true;
+                    break;
+                }
+            }
+            if (!$hasCorrect) {
+                return back()
+                    ->withInput()
+                    ->withErrors(['error' => 'Please mark at least one answer as correct before saving the question.']);
+            }
+        }
+
         $question->update([
             'type'              => $data['type'],
             'content_encrypted' => $this->encryption->encrypt($data['content']),
@@ -211,8 +264,44 @@ class ExamController extends Controller
         return back()->with('success', 'Question removed.');
     }
 
-    public function submitForApproval(Exam $exam)
+    /**
+     * Permanently delete a draft exam (teacher only, draft status only).
+     * Uses forceDelete() on exam and questions (both use SoftDeletes) so records
+     * are removed from the database entirely, not just soft-deleted.
+     * Also removes any uploaded attachment files from storage.
+     */
+    public function destroy(Exam $exam)
     {
+        $this->authorizeTeacher($exam);
+
+        if ($exam->status !== 'draft') {
+            return back()->withErrors(['error' => 'Only draft exams can be deleted.']);
+        }
+
+        $title = $exam->title;
+
+        // Load questions including any already soft-deleted ones
+        $questions = $exam->questions()->withTrashed()->get();
+
+        foreach ($questions as $question) {
+            // Delete attachment file from storage
+            if ($question->attachment_path) {
+                Storage::disk('public')->delete($question->attachment_path);
+            }
+            // Hard-delete all answers (Answer has no SoftDeletes)
+            $question->answers()->delete();
+            // Permanently remove the question row
+            $question->forceDelete();
+        }
+
+        // Permanently remove the exam row
+        $exam->forceDelete();
+
+        return redirect()->route('teacher.exams.index')
+            ->with('success', "Exam \"{$title}\" has been permanently deleted.");
+    }
+
+    public function submitForApproval(Exam $exam)    {
         $this->authorizeTeacher($exam);
 
         if (!in_array($exam->status, ['draft', 'pending_approval'])) {

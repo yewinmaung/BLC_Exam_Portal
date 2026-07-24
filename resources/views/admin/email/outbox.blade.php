@@ -125,8 +125,8 @@
                 <thead style="background:#f8f9fc">
                     <tr>
                         <th style="font-size:0.72rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;padding:0.65rem 1rem;border-bottom:1.5px solid #e8eaf2">Name</th>
-                        <th style="font-size:0.72rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;padding:0.65rem 0.75rem;border-bottom:1.5px solid #e8eaf2">Recipients</th>
-                        <th style="font-size:0.72rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;padding:0.65rem 0.75rem;border-bottom:1.5px solid #e8eaf2">Subject</th>
+                        <th style="font-size:0.72rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;padding:0.65rem 0.75rem;border-bottom:1.5px solid #e8eaf2">Type</th>
+                        <th style="font-size:0.72rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;padding:0.65rem 0.75rem;border-bottom:1.5px solid #e8eaf2">Audience</th>
                         <th style="font-size:0.72rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;padding:0.65rem 0.75rem;border-bottom:1.5px solid #e8eaf2">Send At</th>
                         <th style="font-size:0.72rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;padding:0.65rem 0.75rem;border-bottom:1.5px solid #e8eaf2">Actions</th>
                     </tr>
@@ -137,14 +137,19 @@
                         <td style="padding:0.7rem 1rem;font-weight:600;color:#111827">
                             {{ $item->name }}
                         </td>
-                        <td style="padding:0.7rem 0.75rem;color:#374151">
-                            {{ $groups[$item->recipients] ?? $item->recipients }}
+                        <td style="padding:0.7rem 0.75rem">
+                            @php
+                                $typeColors = ['exam_time'=>'#2d27a0','exam_policy'=>'#92400e','exam_reminder'=>'#059669'];
+                                $typeBg     = ['exam_time'=>'#eef2ff','exam_policy'=>'#fffbeb','exam_reminder'=>'#f0fdf4'];
+                                $tc = $typeColors[$item->notification_type] ?? '#6b7280';
+                                $tb = $typeBg[$item->notification_type] ?? '#f3f4f6';
+                            @endphp
+                            <span style="font-size:0.7rem;background:{{$tb}};color:{{$tc}};padding:2px 8px;border-radius:4px;font-weight:700">
+                                {{ \App\Models\ScheduledEmail::$notificationTypes[$item->notification_type] ?? $item->notification_type }}
+                            </span>
                         </td>
-                        <td style="padding:0.7rem 0.75rem;color:#374151;max-width:200px">
-                            <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
-                                 title="{{ $item->subject }}">
-                                {{ $item->subject }}
-                            </div>
+                        <td style="padding:0.7rem 0.75rem;color:#374151;font-size:0.8rem">
+                            {{ $item->filter_summary }}
                         </td>
                         <td style="padding:0.7rem 0.75rem;white-space:nowrap">
                             <span style="color:#374151">{{ $item->send_at->format('d M Y H:i') }}</span>

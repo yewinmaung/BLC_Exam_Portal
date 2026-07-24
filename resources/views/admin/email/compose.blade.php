@@ -321,14 +321,16 @@
 
 @push('scripts')
 <script>window._COMPOSE_PREVIEW_URL = @json(route('admin.email.compose.preview'));
-window._COMPOSE_CUSTOM_URL  = @json(route('admin.email.compose.custom'));</script>
+window._COMPOSE_CUSTOM_URL         = @json(route('admin.email.compose.custom'));
+window._COMPOSE_CUSTOM_PREVIEW_URL = @json(route('admin.email.compose.custom.preview'));</script>
 <script>
 (function () {
 'use strict';
 var TMPL_DATA   = JSON.parse(document.getElementById('templateData').textContent);
 var CSRF        = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
 var PREVIEW_URL = window._COMPOSE_PREVIEW_URL;
-var CUSTOM_URL  = window._COMPOSE_CUSTOM_URL;
+var CUSTOM_URL         = window._COMPOSE_CUSTOM_URL;
+var CUSTOM_PREVIEW_URL = window._COMPOSE_CUSTOM_PREVIEW_URL;
 
 var panelStep1 = document.getElementById('panelStep1');
 var panelStep2 = document.getElementById('panelStep2');
@@ -473,31 +475,46 @@ document.getElementById('btnStep2Preview').addEventListener('click', async funct
         var body = (manualBodyInp.value    || '').trim();
         if (!subj) { step2Error.textContent = 'Please enter a subject.';      return; }
         if (!body) { step2Error.textContent = 'Please enter a message body.'; return; }
-        var esc = body.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
-        var html = '<html><body style="font-family:Arial,sans-serif;padding:24px;color:#374151">'
-            + '<p style="font-size:.82rem;color:#9ca3af;margin-bottom:6px">To: ' + uiToEmail.value + '</p>'
-            + '<p style="font-size:.82rem;color:#9ca3af;margin-bottom:18px">Subject: <strong>' + subj.replace(/</g,'&lt;') + '</strong></p>'
-            + '<hr style="border:none;border-top:1px solid #e2e8f0;margin-bottom:18px">'
-            + '<div style="font-size:.88rem;line-height:1.75">' + esc + '</div>'
-            + '<hr style="border:none;border-top:1px solid #e2e8f0;margin-top:24px;margin-bottom:12px">'
-            + '<p style="font-size:.73rem;color:#9ca3af">Will be sent wrapped in Believe Learning Center branded template.</p>'
-            + '</body></html>';
-        previewSubj.textContent     = subj;
-        previewRecip.textContent    = uiToEmail.value;
-        previewName.textContent     = 'Custom Message (no template)';
-        previewBadge.textContent    = 'Single';
-        previewSample.style.display = 'none';
-        previewFrame.srcdoc         = html;
-        hiddenMode.value       = 'single';
-        hiddenSlug.value       = '';
-        hiddenToEmail.value    = uiToEmail.value;
-        hiddenRecips.value     = '';
-        hiddenSubj.value       = subj;
-        hiddenBody.value       = '';
-        hiddenBodyPlain.value  = body;
-        hiddenCustomPath.value = '1';
-        hiddenVarsCont.innerHTML = '';
-        showStep(3);
+
+        var btn2 = document.getElementById('btnStep2Preview');
+        btn2.disabled = true;
+        btn2.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Loading\u2026';
+
+        try {
+            var cpResp = await fetch(CUSTOM_PREVIEW_URL, {
+                method  : 'POST',
+                headers : {'Content-Type':'application/json','X-CSRF-TOKEN':CSRF,'Accept':'application/json'},
+                body    : JSON.stringify({ subject: subj, body: body })
+            });
+            if (!cpResp.ok) {
+                step2Error.textContent = 'Preview failed. Please try again.'; return;
+            }
+            var cpData = await cpResp.json();
+
+            previewSubj.textContent     = subj;
+            previewRecip.textContent    = uiToEmail.value;
+            previewName.textContent     = 'Custom Message (no template)';
+            previewBadge.textContent    = 'Single';
+            previewSample.style.display = 'none';
+            previewFrame.srcdoc         = cpData.html;
+
+            hiddenMode.value       = 'single';
+            hiddenSlug.value       = '';
+            hiddenToEmail.value    = uiToEmail.value;
+            hiddenRecips.value     = '';
+            hiddenSubj.value       = subj;
+            hiddenBody.value       = '';
+            hiddenBodyPlain.value  = body;
+            hiddenCustomPath.value = '1';
+            hiddenVarsCont.innerHTML = '';
+
+            showStep(3);
+        } catch(err) {
+            step2Error.textContent = 'Network error. Please try again.';
+        } finally {
+            btn2.disabled  = false;
+            btn2.innerHTML = '<i class="bi bi-eye me-1"></i> Preview Email';
+        }
         return;
     }
 

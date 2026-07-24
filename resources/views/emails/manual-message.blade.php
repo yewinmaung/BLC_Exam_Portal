@@ -11,10 +11,16 @@
   .header h1 { color:#fff;font-size:1.3rem;font-weight:800;margin:0;letter-spacing:0.01em; }
   .header p  { color:rgba(255,255,255,0.75);font-size:0.82rem;margin:6px 0 0; }
   .body  { padding:32px 36px; }
-  .message-text { font-size:0.88rem;color:#374151;line-height:1.75;margin-bottom:28px; }
+  .greeting { font-size:0.95rem;color:#1a2540;font-weight:600;margin-bottom:16px; }
+  .message-card {
+    background:#f0f4ff;border:1.5px solid #c7d2fe;border-radius:12px;
+    padding:20px 22px;margin-bottom:24px;
+  }
+  .message-text { font-size:0.88rem;color:#374151;line-height:1.8;white-space:pre-line; }
   .divider { border:none;border-top:1px solid #e8eaf2;margin:24px 0; }
-  .meta-box { background:#f8f9fc;border-radius:8px;padding:12px 16px;font-size:0.78rem;color:#6b7280;margin-bottom:8px; }
-  .meta-box strong { color:#374151; }
+  .meta-row { display:flex;gap:32px;flex-wrap:wrap;margin-bottom:4px; }
+  .meta-item { font-size:0.77rem;color:#6b7280; }
+  .meta-item strong { display:block;font-size:0.69rem;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:2px; }
   .footer { border-top:1px solid #f0f0f0;padding:18px 36px;text-align:center;font-size:0.73rem;color:#9ca3af; }
 </style>
 </head>
@@ -27,16 +33,26 @@
   </div>
 
   <div class="body">
-    <div class="message-text">
-      {!! nl2br(e($body)) !!}
+
+    <div class="greeting">Message from Admin</div>
+
+    <div class="message-card">
+      <div class="message-text">{{ $body }}</div>
     </div>
 
     <hr class="divider">
 
-    <div class="meta-box">
-      <strong>Sent Date:</strong> {{ $sentAt->format('d F Y') }}<br>
-      <strong>Sent Time:</strong> {{ $sentAt->format('h:i A') }}
+    <div class="meta-row">
+      <div class="meta-item">
+        <strong>Sent Date</strong>
+        {{ $sentAt->format('d F Y') }}
+      </div>
+      <div class="meta-item">
+        <strong>Sent Time</strong>
+        {{ $sentAt->format('h:i A') }}
+      </div>
     </div>
+
   </div>
 
   <div class="footer">

@@ -3,9 +3,13 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AcademicYear;
 use App\Models\EmailLog;
 use App\Models\EmailTemplate;
+use App\Models\Exam;
+use App\Models\Major;
 use App\Models\ScheduledEmail;
+use App\Models\YearLevel;
 use App\Services\ActivityLogService;
 use App\Services\EmailService;
 use App\Services\InboxSyncService;
@@ -575,6 +579,31 @@ class EmailController extends Controller
     // ── Sent ─────────────────────────────────────────────────────────
 
     /**
+     * AJAX preview for custom single-recipient message.
+     * Renders the manual-message branded wrapper with the provided subject/body
+     * and returns the full HTML — no email is sent, no log created.
+     *
+     * POST /admin/email/compose/custom/preview
+     * Body: { subject, body }
+     * Returns: JSON { html }
+     */
+    public function customPreview(Request $request)
+    {
+        $request->validate([
+            'subject' => ['required', 'string', 'max:255'],
+            'body'    => ['required', 'string', 'max:10000'],
+        ]);
+
+        $html = view('emails.manual-message', [
+            'subject' => $request->input('subject'),
+            'body'    => $request->input('body'),
+            'sentAt'  => now(),
+        ])->render();
+
+        return response()->json(['html' => $html]);
+    }
+
+    /**
      * Single-recipient custom email.
      *
      * Admin manually enters: to_email, subject, body (plain text).
@@ -652,9 +681,8 @@ class EmailController extends Controller
     {
         $queued    = EmailLog::where('status', 'queued')->latest()->paginate(20, ['*'], 'queued_page');
         $scheduled = ScheduledEmail::where('is_sent', false)->orderBy('send_at')->paginate(20, ['*'], 'sched_page');
-        $groups    = ScheduledEmail::$recipientLabels;
 
-        return view('admin.email.outbox', compact('queued', 'scheduled', 'groups'));
+        return view('admin.email.outbox', compact('queued', 'scheduled'));
     }
 
     // ── Bulk Email ───────────────────────────────────────────────────
@@ -702,27 +730,66 @@ class EmailController extends Controller
 
     // ── Scheduled Email ──────────────────────────────────────────────
 
+    /**
+     * Show the Academic Notification Scheduler page.
+     * Passes all filter data needed to build the checkboxes.
+     */
     public function scheduled()
     {
-        $scheduled = ScheduledEmail::latest()->paginate(20);
-        $groups    = ScheduledEmail::$recipientLabels;
-        return view('admin.email.scheduled', compact('scheduled', 'groups'));
+        $scheduled    = ScheduledEmail::with('creator')->latest()->paginate(20);
+        $academicYears = AcademicYear::orderByDesc('start_year')->get();
+        $yearLevels   = YearLevel::orderBy('level')->get();
+        $majors       = Major::where('is_active', true)->orderBy('name')->get();
+        $exams        = Exam::with('course')
+                            ->whereIn('status', ['published', 'approved'])
+                            ->orderByDesc('created_at')
+                            ->get();
+
+        return view('admin.email.scheduled', compact(
+            'scheduled',
+            'academicYears',
+            'yearLevels',
+            'majors',
+            'exams'
+        ));
     }
 
+    /**
+     * Store a new academic notification schedule.
+     */
     public function storeScheduled(Request $request)
     {
         $data = $request->validate([
-            'name'       => 'required|string|max:255',
-            'subject'    => 'required|string|max:255',
-            'body_html'  => 'required|string',
-            'recipients' => 'required|string',
-            'send_at'    => 'required|date|after:now',
+            'name'                  => 'required|string|max:255',
+            'notification_type'     => 'required|in:exam_time,exam_policy,exam_reminder',
+            'filter_academic_years' => 'nullable|array',
+            'filter_academic_years.*' => 'integer|exists:academic_years,id',
+            'filter_year_levels'    => 'nullable|array',
+            'filter_year_levels.*'  => 'integer|exists:year_levels,id',
+            'filter_majors'         => 'nullable|array',
+            'filter_majors.*'       => 'integer|exists:majors,id',
+            'exam_ids'              => 'nullable|array',
+            'exam_ids.*'            => 'integer|exists:exams,id',
+            'send_at'               => 'required|date|after:now',
         ]);
 
-        ScheduledEmail::create([...$data, 'created_by' => auth()->id()]);
-        $this->activityLog->log('scheduled_email_created', "Scheduled email: {$data['name']}");
+        ScheduledEmail::create([
+            'name'                  => $data['name'],
+            'notification_type'     => $data['notification_type'],
+            'filter_academic_years' => $data['filter_academic_years'] ?? [],
+            'filter_year_levels'    => $data['filter_year_levels'] ?? [],
+            'filter_majors'         => $data['filter_majors'] ?? [],
+            'exam_ids'              => $data['exam_ids'] ?? [],
+            'send_at'               => $data['send_at'],
+            'created_by'            => auth()->id(),
+        ]);
 
-        return back()->with('success', 'Email scheduled.');
+        $this->activityLog->log(
+            'scheduled_email_created',
+            "Scheduled academic notification: {$data['name']} ({$data['notification_type']})"
+        );
+
+        return back()->with('success', 'Academic notification scheduled successfully.');
     }
 
     public function destroyScheduled(ScheduledEmail $scheduled)
