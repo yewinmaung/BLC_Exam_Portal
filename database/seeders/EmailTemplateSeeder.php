@@ -11,36 +11,6 @@ class EmailTemplateSeeder extends Seeder
     {
         $templates = [
             [
-                'name'      => 'Exam Published',
-                'slug'      => 'exam_published',
-                'subject'   => 'New Exam Available: {{exam_name}}',
-                'event'     => 'exam_published',
-                'body_html' => <<<HTML
-<h2>📝 New Exam Available</h2>
-<p>Dear <strong>{{student_name}}</strong>,</p>
-<p>A new exam has been published for your course <strong>{{course_name}}</strong>.</p>
-<div style="background:#f0f4ff;border-left:4px solid #3730a3;padding:14px 18px;margin:20px 0;border-radius:4px">
-    <strong>Exam:</strong> {{exam_name}}<br>
-    <strong>Course:</strong> {{course_name}}
-</div>
-<p>Please log in to your student portal to view the schedule.</p>
-HTML,
-                'is_active' => true,
-            ],
-            [
-                'name'      => 'Exam Submitted for Approval',
-                'slug'      => 'exam_submitted',
-                'subject'   => 'Exam Pending Approval: {{exam_name}}',
-                'event'     => 'exam_submitted',
-                'body_html' => <<<HTML
-<h2>📋 Exam Pending Approval</h2>
-<p>Dear Admin,</p>
-<p>Teacher <strong>{{teacher_name}}</strong> has submitted <strong>{{exam_name}}</strong> for your review.</p>
-<p>Please log in to review and approve.</p>
-HTML,
-                'is_active' => true,
-            ],
-            [
                 'name'      => 'Exam Reminder',
                 'slug'      => 'exam_reminder',
                 'subject'   => 'Reminder: {{exam_name}} is coming up!',

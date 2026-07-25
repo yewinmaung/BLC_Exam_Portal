@@ -148,14 +148,16 @@
                         <td>
                             @if($r->isDisqualified())
                                 <div class="d-flex align-items-center gap-1">
-                                    <span class="badge" style="background:#fef3c7;color:#92400e">
-                                        Failed (Cheating)
+                                    <span style="font-size:0.72rem;font-weight:700;padding:3px 8px;border-radius:5px;background:#fef3c7;color:#92400e;white-space:nowrap">
+                                        <i class="bi bi-exclamation-triangle me-1"></i>Failed (Cheating)
                                     </span>
                                     @if($r->violation_reason)
-                                    <button class="btn btn-xs btn-outline-warning" 
-                                            data-bs-toggle="tooltip" 
-                                            title="{{ $r->violation_reason }}">
-                                        <i class="bi bi-info-circle"></i>
+                                    <button class="btn btn-sm btn-outline-warning p-0 d-flex align-items-center justify-content-center"
+                                            style="width:24px;height:24px;border-radius:50%;flex-shrink:0"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#violationModal{{ $r->id }}"
+                                            title="View violation details">
+                                        <i class="bi bi-info-circle" style="font-size:0.8rem"></i>
                                     </button>
                                     @endif
                                 </div>
@@ -194,16 +196,71 @@
         @endif
     </div>
 </div>
+
+{{-- ── Violation Detail Modals ─────────────────────────────────────────── --}}
+@foreach($results as $r)
+    @if($r->isDisqualified() && $r->violation_reason)
+    <div class="modal fade" id="violationModal{{ $r->id }}" tabindex="-1" aria-labelledby="violationLabel{{ $r->id }}" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" style="max-width:480px">
+            <div class="modal-content" style="border-radius:12px;border:none;box-shadow:0 8px 32px rgba(0,0,0,0.18)">
+                <div class="modal-header" style="background:#fef3c7;border-bottom:2px solid #f59e0b;border-radius:12px 12px 0 0;padding:16px 20px">
+                    <h5 class="modal-title d-flex align-items-center gap-2" id="violationLabel{{ $r->id }}" style="color:#92400e;font-size:1rem;font-weight:700">
+                        <i class="bi bi-shield-exclamation"></i>Cheating Violation Details
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" style="padding:20px 22px">
+
+                    <div class="mb-3">
+                        <div style="font-size:0.72rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Student:</div>
+                        <div style="font-size:0.9rem;color:#111827">{{ $r->student->name }} ({{ $r->student->email }})</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div style="font-size:0.72rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Exam:</div>
+                        <div style="font-size:0.9rem;color:#111827">{{ $r->exam->title ?? '—' }}</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div style="font-size:0.72rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Violation Reason:</div>
+                        <div style="background:#fef3c7;border:1.5px solid #f59e0b;border-radius:8px;padding:10px 14px;font-size:0.86rem;color:#92400e">
+                            <i class="bi bi-exclamation-triangle me-2"></i>{{ $r->violation_reason }}
+                        </div>
+                    </div>
+
+                    @if($r->disqualified_at)
+                    <div class="mb-3">
+                        <div style="font-size:0.72rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Disqualified At:</div>
+                        <div style="font-size:0.88rem;color:#374151">{{ $r->disqualified_at->format('M d, Y H:i:s') }}</div>
+                    </div>
+                    @endif
+
+                    <div class="mb-1">
+                        <div style="font-size:0.72rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Actual Performance:</div>
+                        <div class="d-flex gap-4">
+                            <div>
+                                <div style="font-size:0.72rem;color:#9ca3af;margin-bottom:2px">Score</div>
+                                <div style="font-weight:700;font-size:0.9rem">{{ $r->obtained_marks }}/{{ $r->total_marks }}</div>
+                            </div>
+                            <div>
+                                <div style="font-size:0.72rem;color:#9ca3af;margin-bottom:2px">Percentage</div>
+                                <div style="font-weight:700;font-size:0.9rem">{{ $r->percentage }}%</div>
+                            </div>
+                        </div>
+                        <div style="font-size:0.75rem;color:#9ca3af;margin-top:8px">
+                            <i class="bi bi-info-circle me-1"></i>Marks preserved for audit purposes
+                        </div>
+                    </div>
+
+                </div>
+                <div class="modal-footer" style="padding:12px 20px;border-top:1px solid #f0f0f0">
+                    <button type="button" class="btn btn-secondary btn-sm px-4" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
+@endforeach
 @endsection
 
-@push('scripts')
-<script>
-// Initialize Bootstrap tooltips
-document.addEventListener('DOMContentLoaded', function() {
-    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-        return new bootstrap.Tooltip(tooltipTriggerEl);
-    });
-});
-</script>
-@endpush
+

@@ -11,7 +11,6 @@ use App\Models\Major;
 use App\Models\User;
 use App\Models\YearLevel;
 use App\Services\ActivityLogService;
-use App\Services\EmailService;
 use App\Services\NotificationService;
 use Illuminate\Http\Request;
 
@@ -19,8 +18,7 @@ class ExamController extends Controller
 {
     public function __construct(
         private ActivityLogService $activityLog,
-        private NotificationService $notifications,
-        private EmailService $emailService
+        private NotificationService $notifications
     ) {
     }
 
@@ -260,29 +258,7 @@ class ExamController extends Controller
                 "Exam \"{$exam->title}\" for {$exam->course->title} is now live. Good luck!",
                 route('student.exams.show', $exam)
             );
-            if ($student->email) {
-                try {
-                    $this->emailService->sendTemplate(
-                        'exam_published',
-                        $student->email,
-                        $student->name,
-                        [
-                            'student_name'  => $student->name,
-                            'exam_name'     => $exam->title,
-                            'course_name'   => $exam->course->title ?? '',
-                            'total_marks'   => $exam->total_marks,
-                            'passing_marks' => $exam->passing_marks,
-                            'app_name'      => config('app.name'),
-                            'app_url'       => config('app.url'),
-                        ],
-                        'exam_published',
-                        $student->id,
-                        true  // queue
-                    );
-                } catch (\Throwable $e) {
-                    logger()->error('ExamPublishedMail failed: ' . $e->getMessage());
-                }
-            }
+
         }
 
         // Also notify the teacher

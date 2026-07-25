@@ -10,7 +10,6 @@ use App\Models\Question;
 use App\Models\QuestionCategory;
 use App\Models\Role;
 use App\Models\User;
-use App\Services\EmailService;
 use App\Services\EncryptionService;
 use App\Services\ExamAccessService;
 use App\Services\NotificationService;
@@ -24,7 +23,6 @@ class ExamController extends Controller
         private EncryptionService       $encryption,
         private ExamAccessService       $examAccess,
         private NotificationService     $notifications,
-        private EmailService            $emailService,
         private QuestionImportService   $questionImport
     ) {
     }
@@ -368,25 +366,7 @@ class ExamController extends Controller
                     $reviewLink
                 );
 
-                if ($admin->email) {
-                    try {
-                        $this->emailService->sendTemplate(
-                            'exam_submitted',
-                            $admin->email,
-                            $admin->name,
-                            [
-                                'teacher_name' => $teacher->name,
-                                'exam_name'    => $exam->title,
-                                'course_name'  => $exam->course->title ?? '',
-                            ],
-                            'exam_submitted',
-                            $admin->id,
-                            true
-                        );
-                    } catch (\Throwable $e) {
-                        logger()->error('ExamSubmittedMail failed: ' . $e->getMessage());
-                    }
-                }
+
             }
         });
 
