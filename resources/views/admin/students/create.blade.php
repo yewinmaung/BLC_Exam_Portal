@@ -31,8 +31,12 @@
                         <input type="email" name="email" class="form-control" value="{{ old('email') }}" required>
                     </div>
                     <div class="col-sm-6">
-                        <label class="form-label">Password <span class="text-danger">*</span></label>
-                        <input type="password" name="password" class="form-control" required minlength="8" placeholder="Min. 8 characters">
+                        {{-- Password is auto-generated and emailed to the student --}}
+                        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;font-size:0.83rem;color:#1e40af;height:100%;display:flex;align-items:center">
+                            <div><i class="bi bi-info-circle-fill me-2"></i>
+                            <strong>Password is auto-generated.</strong><br>
+                            A secure temporary password will be emailed to the student. They must change it on first login.</div>
+                        </div>
                     </div>
                     <div class="col-sm-6">
                         <label class="form-label">Phone</label>

@@ -66,5 +66,6 @@ class Kernel extends HttpKernel
         'role' => \App\Http\Middleware\RoleMiddleware::class,
         'exam.session' => \App\Http\Middleware\EnsureSingleExamSession::class,
         'exam.active' => \App\Http\Middleware\EnsureExamActive::class,
+        'force.password.change' => \App\Http\Middleware\ForcePasswordChange::class,
     ];
 }

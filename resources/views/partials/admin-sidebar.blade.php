@@ -38,6 +38,11 @@
        href="{{ route('admin.users.index') }}">
         <i class="bi bi-people"></i> Users
     </a>
+  {{-- Academic Years --}}
+    <a class="nav-link {{ request()->routeIs('admin.academic.years.*') ? 'active' : '' }}"
+       href="{{ route('admin.academic.years.index') }}">
+        <i class="bi bi-calendar3"></i> Academic Years
+    </a>
 
     {{-- Teachers --}}
     <a class="nav-link {{ request()->routeIs('admin.teachers.*') ? 'active' : '' }}"
@@ -45,19 +50,13 @@
         <i class="bi bi-person-workspace"></i> Teachers
     </a>
 
-    {{-- Academic Years --}}
-    <a class="nav-link {{ request()->routeIs('admin.academic.years.*') ? 'active' : '' }}"
-       href="{{ route('admin.academic.years.index') }}">
-        <i class="bi bi-calendar3"></i> Academic Years
+  
+{{-- Majors --}}
+    <a class="nav-link {{ request()->routeIs('admin.majors.*') ? 'active' : '' }}"
+       href="{{ route('admin.majors.index') }}">
+        <i class="bi bi-collection"></i> Majors
     </a>
-
-    {{-- Students --}}
-    <a class="nav-link {{ request()->routeIs('admin.students.*') ? 'active' : '' }}"
-       href="{{ route('admin.students.index') }}">
-        <i class="bi bi-mortarboard"></i> Students
-    </a>
-
-    {{-- Courses — badge: 'course' category (enrolled, course_updated …) --}}
+  {{-- Courses — badge: 'course' category (enrolled, course_updated …) --}}
     <a class="nav-link {{ request()->routeIs('admin.courses.*') ? 'active' : '' }}"
        href="{{ route('admin.courses.index') }}">
         <i class="bi bi-book"></i> Courses
@@ -68,12 +67,14 @@
         </span>
     </a>
 
-    {{-- Majors --}}
-    <a class="nav-link {{ request()->routeIs('admin.majors.*') ? 'active' : '' }}"
-       href="{{ route('admin.majors.index') }}">
-        <i class="bi bi-collection"></i> Majors
+    {{-- Students --}}
+    <a class="nav-link {{ request()->routeIs('admin.students.*') ? 'active' : '' }}"
+       href="{{ route('admin.students.index') }}">
+        <i class="bi bi-mortarboard"></i> Students
     </a>
 
+  
+    
     {{-- Enrollments --}}
     <a class="nav-link {{ request()->routeIs('admin.enrollments.*') ? 'active' : '' }}"
        href="{{ route('admin.enrollments.index') }}">

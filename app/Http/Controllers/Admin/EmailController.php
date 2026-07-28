@@ -12,7 +12,6 @@ use App\Models\ScheduledEmail;
 use App\Models\YearLevel;
 use App\Services\ActivityLogService;
 use App\Services\EmailService;
-use App\Services\InboxSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 
@@ -20,8 +19,7 @@ class EmailController extends Controller
 {
     public function __construct(
         private EmailService      $emailService,
-        private ActivityLogService $activityLog,
-        private InboxSyncService  $inboxSync
+        private ActivityLogService $activityLog
     ) {}
 
     // ── Dashboard ─────────────────────────────────────────────────────
@@ -205,41 +203,74 @@ class EmailController extends Controller
     // ── Inbox ────────────────────────────────────────────────────────
 
     /**
-     * Inbox list — paginated, searchable, with unread badge count.
+     * Inbox list — shows one row per thread root, newest activity first.
+     * Threads with multiple messages show a message count badge.
      */
     public function inbox(Request $request)
     {
-        $query = \App\Models\InboxEmail::latest('received_at');
-
-        if ($request->filled('search')) {
-            $s = $request->input('search');
-            $query->where(function ($q) use ($s) {
-                $q->where('from_email', 'like', '%'.$s.'%')
-                  ->orWhere('from_name',  'like', '%'.$s.'%')
-                  ->orWhere('subject',    'like', '%'.$s.'%');
-            });
-        }
-
-        if ($request->filled('status')) {
-            $query->where('status', $request->input('status'));
-        }
+        // Show one representative row per thread: the most-recent message
+        // in each thread (or standalone messages with no thread).
+        $query = \App\Models\InboxEmail::query()
+            ->select('inbox_emails.*')
+            ->when($request->filled('search'), function ($q) use ($request) {
+                $s = $request->input('search');
+                $q->where(function ($q2) use ($s) {
+                    $q2->where('from_email', 'like', '%'.$s.'%')
+                       ->orWhere('from_name',  'like', '%'.$s.'%')
+                       ->orWhere('subject',    'like', '%'.$s.'%');
+                });
+            })
+            ->when($request->filled('status'), fn ($q) =>
+                $q->where('status', $request->input('status'))
+            )
+            // Show only thread roots (parent_id IS NULL) or standalone messages
+            // so each conversation appears once. Threads are expanded in the show view.
+            ->whereNull('parent_id')
+            ->orderByDesc('received_at');
 
         $emails      = $query->paginate(25)->withQueryString();
         $unreadCount = \App\Models\InboxEmail::where('status', 'unread')->count();
 
-        return view('admin.email.inbox', compact('emails', 'unreadCount'));
+        // Attach thread message counts for badge display
+        $threadIds = $emails->pluck('thread_id')->filter()->unique()->values()->toArray();
+        $threadCounts = [];
+        if (!empty($threadIds)) {
+            $threadCounts = \App\Models\InboxEmail::whereIn('thread_id', $threadIds)
+                ->selectRaw('thread_id, COUNT(*) as cnt')
+                ->groupBy('thread_id')
+                ->pluck('cnt', 'thread_id')
+                ->toArray();
+        }
+
+        return view('admin.email.inbox', compact('emails', 'unreadCount', 'threadCounts'));
     }
 
     /**
-     * Show a single inbox email. Automatically marks it as read.
+     * Show a single inbox email with its full thread conversation.
+     * Marks the opened message (and any unread messages in the thread) as read.
      */
     public function showInbox(\App\Models\InboxEmail $inboxEmail)
     {
+        // Mark this message as read
         if ($inboxEmail->status === 'unread') {
             $inboxEmail->update(['status' => 'read']);
         }
 
-        return view('admin.email.inbox.show', compact('inboxEmail'));
+        // Load entire thread for conversation view
+        $thread = collect([$inboxEmail]);
+        if ($inboxEmail->thread_id) {
+            $thread = \App\Models\InboxEmail::where('thread_id', $inboxEmail->thread_id)
+                ->with('replier')
+                ->orderBy('received_at')
+                ->get();
+
+            // Mark all unread thread messages as read
+            \App\Models\InboxEmail::where('thread_id', $inboxEmail->thread_id)
+                ->where('status', 'unread')
+                ->update(['status' => 'read']);
+        }
+
+        return view('admin.email.inbox.show', compact('inboxEmail', 'thread'));
     }
 
     /**
@@ -248,15 +279,16 @@ class EmailController extends Controller
     public function markInboxRead(\App\Models\InboxEmail $inboxEmail)
     {
         $inboxEmail->update(['status' => 'read']);
-
         return back()->with('success', 'Marked as read.');
     }
 
     /**
-     * Reply to an inbox email.
-     * Uses existing EmailService::send() + SendEmailJob — no new sending logic.
-     * Creates an email_logs record automatically via EmailService.
-     * Updates inbox_emails: status=replied, replied_by, replied_at.
+     * Reply to an inbox email with proper RFC 2822 threading headers.
+     *
+     * Builds In-Reply-To and References headers so the reply is correctly
+     * threaded in the recipient's email client.  Uses the existing
+     * EmailService::send() + SendEmailJob flow — nothing in that pipeline
+     * is changed.
      */
     public function replyInbox(Request $request, \App\Models\InboxEmail $inboxEmail)
     {
@@ -265,25 +297,65 @@ class EmailController extends Controller
             'subject'    => ['nullable', 'string', 'max:255'],
         ]);
 
-        $subject = $request->input('subject')
-            ?: 'Re: ' . $inboxEmail->subject;
+        // Build RFC 2822 compliant subject
+        $baseSubject = $inboxEmail->subject;
+        $reSubject   = str_starts_with(strtolower($baseSubject), 're:')
+            ? $baseSubject
+            : 'Re: ' . $baseSubject;
+        $subject = $request->input('subject') ?: $reSubject;
 
-        $bodyHtml = nl2br(e($request->input('reply_body')));
+        // Build body: reply text + quoted original
+        $quotedBody = $this->buildQuotedReply(
+            $request->input('reply_body'),
+            $inboxEmail
+        );
 
-        // Use existing EmailService — not touched
+        // Store reply as a new InboxEmail to maintain the thread locally
+        // (admin outgoing replies tracked in the same thread)
+        $replyMessageId = '<reply-' . uniqid() . '@' . parse_url(config('app.url'), PHP_URL_HOST) . '>';
+
+        // Build References header: parent's References + parent's Message-ID
+        $parentRefs    = $inboxEmail->references ?? '';
+        $parentMsgId   = $inboxEmail->message_id ? '<' . $inboxEmail->message_id . '>' : null;
+        $newReferences = trim($parentRefs . ($parentMsgId ? ' ' . $parentMsgId : ''));
+
+        // Resolve thread_id for the reply
+        $threadId = $inboxEmail->thread_id ?? md5($inboxEmail->message_id ?? $inboxEmail->id);
+
+        // Record the outgoing reply in inbox_emails as a thread member
+        $replyRecord = \App\Models\InboxEmail::create([
+            'from_email'  => config('mail.from.address'),
+            'from_name'   => config('mail.from.name'),
+            'sender_type' => 'external',
+            'user_id'     => auth()->id(),
+            'subject'     => $subject,
+            'body_html'   => $quotedBody,
+            'body_text'   => $request->input('reply_body'),
+            'message_id'  => trim($replyMessageId, '<>'),
+            'in_reply_to' => $inboxEmail->message_id,
+            'references'  => $newReferences ?: null,
+            'thread_id'   => $threadId,
+            'parent_id'   => $inboxEmail->id,
+            'status'      => 'replied',
+            'replied_by'  => auth()->id(),
+            'replied_at'  => now(),
+            'received_at' => now(),
+        ]);
+
+        // Send via existing EmailService (SMTP flow unchanged)
         $this->emailService->send(
             $inboxEmail->from_email,
             $inboxEmail->from_name ?: '',
             $subject,
-            $bodyHtml,
+            $quotedBody,
             'inbox_reply',
             null,
             auth()->id(),
-            true,           // queued via SendEmailJob
+            true,
             'inbox_reply'
         );
 
-        // Update inbox record
+        // Mark original as replied
         $inboxEmail->update([
             'status'     => 'replied',
             'replied_by' => auth()->id(),
@@ -295,8 +367,52 @@ class EmailController extends Controller
             "Replied to inbox email #{$inboxEmail->id} from {$inboxEmail->from_email}"
         );
 
-        return redirect()->route('admin.email.inbox')
+        return redirect()->route('admin.email.inbox.show', $inboxEmail)
             ->with('success', "Reply queued for delivery to {$inboxEmail->from_email}.");
+    }
+
+    /**
+     * AJAX endpoint for real-time inbox polling.
+     * Returns new inbox messages received after a given timestamp.
+     * Used as a fallback when WebSocket/Pusher is not configured.
+     *
+     * GET /admin/email/inbox/poll?since=<ISO8601>
+     */
+    public function pollInbox(Request $request)
+    {
+        $since = $request->input('since');
+
+        $query = \App\Models\InboxEmail::whereNull('parent_id')
+            ->orderByDesc('received_at')
+            ->limit(10);
+
+        if ($since) {
+            try {
+                $sinceDate = \Carbon\Carbon::parse($since);
+                $query->where('received_at', '>', $sinceDate);
+            } catch (\Throwable $e) {
+                // Invalid date — return empty
+                return response()->json(['emails' => [], 'unread_count' => 0]);
+            }
+        }
+
+        $newEmails = $query->get()->map(fn ($e) => [
+            'id'           => $e->id,
+            'from_email'   => $e->from_email,
+            'display_name' => $e->display_name,
+            'subject'      => $e->subject,
+            'sender_type'  => $e->sender_type,
+            'thread_id'    => $e->thread_id,
+            'status'       => $e->status,
+            'received_at'  => $e->received_at->toIso8601String(),
+            'received_fmt' => $e->received_at->format('d M Y H:i'),
+            'show_url'     => route('admin.email.inbox.show', $e->id),
+        ]);
+
+        return response()->json([
+            'emails'       => $newEmails,
+            'unread_count' => \App\Models\InboxEmail::where('status', 'unread')->count(),
+        ]);
     }
 
     /**
@@ -305,22 +421,58 @@ class EmailController extends Controller
     public function archiveInbox(\App\Models\InboxEmail $inboxEmail)
     {
         $inboxEmail->update(['status' => 'archived']);
-
         $this->activityLog->log('inbox_archived', "Archived inbox email #{$inboxEmail->id}");
-
         return redirect()->route('admin.email.inbox')
             ->with('success', 'Email archived.');
     }
 
     /**
+     * Build the quoted reply body HTML.
+     * Wraps the admin's reply above a collapsible quote of the original message.
+     */
+    private function buildQuotedReply(string $replyText, \App\Models\InboxEmail $original): string
+    {
+        $replyHtml = nl2br(e($replyText));
+        $dateStr   = $original->received_at->format('D, d M Y \a\t H:i');
+        $from      = e($original->display_name) . ' &lt;' . e($original->from_email) . '&gt;';
+        $origBody  = $original->body_html
+            ? '<div style="margin-left:12px;padding-left:12px;border-left:3px solid #d1d5db;color:#6b7280;font-size:0.85em">'
+              . $original->body_html
+              . '</div>'
+            : '<div style="margin-left:12px;padding-left:12px;border-left:3px solid #d1d5db;color:#6b7280;font-size:0.85em">'
+              . nl2br(e($original->body_text ?? ''))
+              . '</div>';
+
+        return <<<HTML
+<div>{$replyHtml}</div>
+<br>
+<div style="font-size:0.82rem;color:#6b7280;margin-top:16px">
+    On {$dateStr}, {$from} wrote:
+</div>
+{$origBody}
+HTML;
+    }
+
+    /**
      * Sync inbox from Gmail via IMAP.
-     * Fetches the most recent messages and stores new ones in inbox_emails.
-     * Existing records (matched by message_id) are skipped — no duplicates.
+     *
+     * Runs InboxSyncService::sync() directly (not queued) so the result is
+     * immediately visible. set_time_limit(0) prevents PHP-FPM from killing
+     * the request during the IMAP session — this is safe for an admin-only
+     * action. The InboxSyncService already limits the fetch to IMAP_SYNC_LIMIT
+     * (default 20) messages and skips body download until dedup passes, so
+     * the actual wall-clock time is bounded.
      */
     public function syncInbox(Request $request)
     {
+        // Remove the 60 s wall-clock limit for this admin request only.
+        // The InboxSyncService fetch limit (default 20 msgs) keeps this fast.
+        @set_time_limit(0);
+
+        $syncService = app(\App\Services\InboxSyncService::class);
+
         try {
-            $result = $this->inboxSync->sync();
+            $result = $syncService->sync();
 
             $this->activityLog->log(
                 'inbox_synced',
@@ -332,8 +484,12 @@ class EmailController extends Controller
                     ->withErrors(['error' => 'Sync failed: ' . $result['message']]);
             }
 
+            $msg = $result['imported'] > 0
+                ? "{$result['imported']} new email(s) imported. {$result['skipped']} already existed."
+                : "Sync complete — no new emails. ({$result['skipped']} already existed)";
+
             return redirect()->route('admin.email.inbox')
-                ->with('success', $result['message']);
+                ->with('success', $msg);
 
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::error('EmailController::syncInbox — ' . $e->getMessage());

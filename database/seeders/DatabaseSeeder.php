@@ -25,7 +25,7 @@ class DatabaseSeeder extends Seeder
         $studentRole = Role::where('slug', RoleSlug::STUDENT)->first();
 
         User::firstOrCreate(
-            ['email' => config('believe.default_admin.email', 'admin@blc.edu.mm')],
+            ['email' => config('believe.default_admin.email', 'believelearningcenter2026@gmail.com')],
             [
                 'name' => config('believe.default_admin.name', 'BLC Administrator'),
                 'password' => Hash::make(config('believe.default_admin.password', 'password')),

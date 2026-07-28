@@ -27,6 +27,11 @@ Route::middleware('guest')->group(function () {
     Route::get('register', [AuthController::class, 'showRegister'])->name('register');
     Route::post('register', [AuthController::class, 'register']);
 
+    // ── Request new temporary password (when expired) ──────────────────────
+    Route::post('login/request-new-password',
+        [AuthController::class, 'requestNewTemporaryPassword']
+    )->name('login.request-new-password');
+
     // ── Forgot Password (OTP-based reset) ──────────────────────────────────
     Route::get('forgot-password',              [ForgotPasswordController::class, 'showEmailForm'])->name('forgot-password');
     Route::post('forgot-password/send',        [ForgotPasswordController::class, 'sendOtp'])->name('forgot-password.send');
@@ -38,7 +43,15 @@ Route::middleware('guest')->group(function () {
 
 Route::post('logout', [AuthController::class, 'logout'])->middleware('auth')->name('logout');
 
-Route::middleware(['auth', 'exam.session'])->group(function () {
+// ── Force Password Change (authenticated, any role except admin) ──────────
+Route::middleware('auth')->group(function () {
+    Route::get('password/change', [AuthController::class, 'showForcePasswordChange'])
+        ->name('password.force-change');
+    Route::post('password/change', [AuthController::class, 'updateForcePasswordChange'])
+        ->name('password.force-change.update');
+});
+
+Route::middleware(['auth', 'exam.session', 'force.password.change'])->group(function () {
     Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
     Route::post('notifications/{notification}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
     Route::post('notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.read-all');
@@ -82,6 +95,7 @@ Route::middleware(['auth', 'exam.session'])->group(function () {
             // ── New panel navigation ───────────────────────────────────────
             Route::get('inbox',                                                     [\App\Http\Controllers\Admin\EmailController::class, 'inbox'])->name('inbox');
             Route::post('inbox/sync',                                               [\App\Http\Controllers\Admin\EmailController::class, 'syncInbox'])->name('inbox.sync');
+            Route::get('inbox/poll',                                                [\App\Http\Controllers\Admin\EmailController::class, 'pollInbox'])->name('inbox.poll');
             Route::get('inbox/{inboxEmail}',                                        [\App\Http\Controllers\Admin\EmailController::class, 'showInbox'])->name('inbox.show');
             Route::post('inbox/{inboxEmail}/reply',                                 [\App\Http\Controllers\Admin\EmailController::class, 'replyInbox'])->name('inbox.reply');
             Route::post('inbox/{inboxEmail}/read',                                  [\App\Http\Controllers\Admin\EmailController::class, 'markInboxRead'])->name('inbox.read');
