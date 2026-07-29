@@ -137,10 +137,13 @@ class ExamAttempt extends Model
      * state that can still be automatically recovered.
      *
      * Conditions (ALL must be true):
-     *  1. status === 'in_progress'  (status never changed to terminated_pending_review)
+     *  1. status === 'in_progress'  (status never changed during a disconnect)
      *  2. disconnected_at is set    (a disconnect was recorded)
      *  3. Elapsed since disconnect  ≤ recovery_time_limit (default 10 min)
-     *  4. expires_at has NOT passed (there is still exam time remaining)
+     *  4. expires_at has NOT passed (Final Expiry Time has not been reached)
+     *     expires_at = MIN(started_at + duration, schedule.ends_at) — set at attempt creation.
+     *     Belt-and-braces: also check schedule.ends_at directly in case an older attempt
+     *     was created before the timing fix was deployed.
      */
     public function canAutoRecover(): bool
     {
@@ -155,7 +158,16 @@ class ExamAttempt extends Model
             return false;
         }
 
-        if (now()->gt($this->expires_at)) {
+        // Primary check: expires_at already encodes MIN(Start+Duration, ends_at)
+        // so a single comparison is sufficient for attempts created after the timing fix.
+        if (now()->gte($this->expires_at)) {
+            return false;
+        }
+
+        // Belt-and-braces: also guard against schedule end time directly.
+        // Protects legacy attempts whose expires_at was stored without the MIN cap.
+        $schedule = $this->schedule;
+        if ($schedule && now()->gte($schedule->ends_at)) {
             return false;
         }
 

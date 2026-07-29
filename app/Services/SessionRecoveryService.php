@@ -11,8 +11,17 @@ use App\Models\SessionRecoveryLog;
  * Handles temporary exam session recovery for network disconnections
  * and browser closures.  This is NOT cheating.
  *
- * NEW WORKFLOW (status never changes to terminated_pending_review for a disconnect):
+ * TIMING CONTRACT
+ * ═══════════════
+ * expires_at is set at attempt creation as:
+ *   expires_at = MIN(started_at + duration_minutes, schedule.ends_at)
  *
+ * This means expires_at already represents the student's Final Expiry Time —
+ * the earliest of their personal duration and the exam's open-window end.
+ * All recovery time checks use expires_at as the single authoritative deadline.
+ *
+ * RECOVERY WORKFLOW (status never changes to terminated_pending_review for a disconnect)
+ * ════════════════════════════════════════════════════════════════════════════════
  *   1. Student disconnects → recordDisconnect()
  *      - status stays     : in_progress   (UNCHANGED)
  *      - disconnected_at  : set to now()
@@ -20,14 +29,15 @@ use App\Models\SessionRecoveryLog;
  *      - expires_at       : NEVER touched
  *      - student_answers  : NEVER touched
  *
- *   2a. Student returns within 10 min → handleReconnect()
+ *   2a. Student returns within 10 min AND before expires_at → handleReconnect()
  *      - status stays     : in_progress   (already active, nothing to restore)
  *      - disconnected_at  : cleared (null) after log is written
  *      - timer displayed  : frozen remaining (expires_at − disconnected_at)
- *                           capped by schedule ends_at
+ *                           capped by schedule ends_at (legacy-safe belt-and-braces)
  *                           disconnect time is NOT consumed from the exam
  *
- *   2b. Student does NOT return in 10 min → finalizeExpiredSession()
+ *   2b. Student does NOT return within 10 min OR expires_at has passed
+ *       → finalizeExpiredSession()
  *      - status set to    : submitted
  *      - submitted_at     : now()
  *      - session token    : cleared
@@ -39,11 +49,10 @@ use App\Models\SessionRecoveryLog;
  *
  * INVARIANTS:
  *   - No new ExamAttempt is ever created.
- *   - expires_at is never modified.
+ *   - expires_at is never modified after attempt creation.
  *   - student_answers is never deleted or modified.
  *   - warning_count is never touched.
  *   - Auto-save logic is never modified.
- *   - No new database tables or columns required.
  */
 class SessionRecoveryService
 {
@@ -115,6 +124,11 @@ class SessionRecoveryService
      *   - Grades with saved answers; unanswered = 0.
      *   - Returns failure + message.
      *
+     * CRITICAL: canAutoRecover() already checks BOTH recovery window (10 min)
+     * AND Final Expiry Time (MIN(Start + Duration, ends_at)). Because expires_at
+     * is now correctly capped at attempt creation, this check is fully correct.
+     * The schedule.ends_at guard below is belt-and-braces for legacy attempts.
+     *
      * @return array{success: bool, message: string, frozen_seconds?: int}
      */
     public function handleReconnect(ExamAttempt $attempt): array
@@ -128,9 +142,10 @@ class SessionRecoveryService
             );
         }
 
-        // Schedule-end guard (checked here for a specific error message)
+        // Belt-and-braces schedule-end guard for legacy attempts.
+        // New attempts will never reach here because expires_at is already capped.
         $schedule = $attempt->schedule;
-        if ($schedule && now()->gt($schedule->ends_at)) {
+        if ($schedule && now()->gte($schedule->ends_at)) {
             return $this->finalizeExpiredSession(
                 $attempt,
                 'The exam schedule has ended. '
@@ -171,9 +186,15 @@ class SessionRecoveryService
     // ──────────────────────────────────────────────────────────────────────
 
     /**
-     * Compute how many seconds are left on the exam for a normal (non-recovery) load.
+     * Compute how many seconds are left on the exam for a normal (non-recovery) page load.
      *
-     * Rule: MIN(expires_at − now,  schedule.ends_at − now)
+     * expires_at already encodes MIN(Start + Duration, schedule.ends_at) for new attempts,
+     * so in most cases expires_at IS the authoritative deadline and the schedule cap
+     * resolves to the same value.  The MIN here stays as belt-and-braces for legacy
+     * attempts that were created before the timing fix.
+     *
+     *   remaining = MIN(expires_at − now,  schedule.ends_at − now)
+     *
      * Returns 0 if already expired.
      */
     public function computeNormalSeconds(ExamAttempt $attempt, ?object $schedule): int
@@ -195,18 +216,28 @@ class SessionRecoveryService
     // ──────────────────────────────────────────────────────────────────────
 
     /**
-     * Compute the frozen remaining exam seconds.
+     * Compute the frozen remaining exam seconds when a student successfully recovers.
      *
-     * Disconnect time is NOT consumed from the student's exam duration:
+     * The student's disconnect time is NOT consumed from their exam duration:
      *   frozen = expires_at − disconnected_at
-     *   final  = MIN(frozen, schedule.ends_at − now)
+     *
+     * expires_at already encodes MIN(started_at + duration, schedule.ends_at),
+     * so a single expires_at subtraction gives the correct frozen seconds.
+     *
+     * Belt-and-braces: cap by the schedule's remaining time in case an older
+     * attempt was created before the timing fix (expires_at not MIN-capped).
+     *   final = MIN(frozen, schedule.ends_at − now)
+     *
+     * Returns 0 if the result would be negative.
      */
     private function computeFrozenSeconds(ExamAttempt $attempt, ?object $schedule): int
     {
-        // How many seconds were left on the exam clock at the moment of disconnect
+        // Seconds left on the exam clock at the moment of disconnect.
+        // expires_at = MIN(Start + Duration, ends_at) — correct for new attempts.
         $frozen = max(0, (int) $attempt->disconnected_at->diffInSeconds($attempt->expires_at, false));
 
         if ($schedule) {
+            // Legacy-safe cap: ensure we never show more time than the open window allows.
             $schedRemaining = max(0, (int) now()->diffInSeconds($schedule->ends_at, false));
             return min($frozen, $schedRemaining);
         }

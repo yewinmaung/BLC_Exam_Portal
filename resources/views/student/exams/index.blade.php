@@ -38,11 +38,12 @@
 <div class="row g-3">
     @forelse($exams as $e)
     @php
-        $schedule = $e->activeSchedule;
-        $activeAttempt = $activeAttempts[$e->id] ?? null;
-        $now = now();
-        $isEnded = $schedule && $now->gt($schedule->ends_at);
-        $isUpcoming = $schedule && $now->lt($schedule->starts_at);
+        $schedule        = $e->activeSchedule;
+        $activeAttempt   = $activeAttempts[$e->id]    ?? null;
+        $finalizedAttempt= $finalizedAttempts[$e->id] ?? null;
+        $now             = now();
+        $isEnded         = $schedule && $now->gt($schedule->ends_at);
+        $isUpcoming      = $schedule && $now->lt($schedule->starts_at);
     @endphp
     <div class="col-md-6 col-xl-4">
         <div class="card h-100" style="transition:transform 0.2s,box-shadow 0.2s" onmouseover="this.style.transform='translateY(-4px)'" onmouseout="this.style.transform=''">
@@ -59,6 +60,32 @@
                         </span>
                         @elseif($isEnded)
                         <span class="text-muted small"><i class="bi bi-check-circle me-1"></i>Ended</span>
+                        @elseif($activeAttempt)
+                        {{--
+                            Two states:
+                            A) disconnected_at is NULL  → student is actively in the exam.
+                               Show nothing in the top-right badge — just the button below.
+                            B) disconnected_at is SET   → student has disconnected.
+                               Show a recovery countdown: disconnected_at + recovery_limit.
+                               When it hits zero, reload the page so the card reflects the
+                               new state (attempt will have been auto-submitted by the server).
+                        --}}
+                        @if($activeAttempt->disconnected_at !== null)
+                        @php
+                            $recoveryLimit    = (int) config('exam_security.recovery_time_limit', 600);
+                            $recoveryDeadline = $activeAttempt->disconnected_at->copy()->addSeconds($recoveryLimit);
+                        @endphp
+                        <span class="small"
+                              id="recovery-badge-{{ $e->id }}"
+                              data-recovery-deadline="{{ $recoveryDeadline->timestamp }}"
+                              data-exam-id="{{ $e->id }}"
+                              data-exam-url="{{ route('student.exams.show', $e) }}"
+                              style="font-weight:700;color:#d97706">
+                            <i class="bi bi-wifi-off me-1"></i>
+                            <span class="recovery-value">--:--</span>
+                        </span>
+                        @endif
+                        {{-- disconnected_at === null: active session — no badge shown --}}
                         @else
                         <span class="text-muted small"><i class="bi bi-clock me-1"></i>{{ $schedule->duration_minutes }}min</span>
                         @endif
@@ -79,15 +106,56 @@
                     </small>
 
                     @if($isEnded)
+                    {{-- Schedule ended — differentiate by attempt state --}}
+                    @if($finalizedAttempt)
+                    {{-- Student submitted or was terminated → let them view --}}
                     <a href="{{ route('student.exams.show', $e) }}" class="btn btn-sm btn-outline-primary">
                         View <i class="bi bi-arrow-right ms-1"></i>
                     </a>
                     @elseif($activeAttempt)
-                    <a href="{{ route('student.exam.take', $activeAttempt) }}" class="btn btn-sm btn-warning" style="background:#d4a51c;border:none;color:#fff;font-weight:700">
-                        In Progress <i class="bi bi-play-fill ms-1"></i>
+                    {{-- Attempt stuck in_progress when window closed → still linkable --}}
+                    <a href="{{ route('student.exams.show', $e) }}" class="btn btn-sm btn-outline-secondary" style="font-weight:600">
+                        View <i class="bi bi-arrow-right ms-1"></i>
                     </a>
                     @else
-                    {{-- Not started yet (upcoming or live, no active attempt) --}}
+                    {{-- Never started the exam at all --}}
+                    <span class="text-muted small fst-italic" style="font-size:0.75rem">
+                        Not attempted
+                    </span>
+                    @endif
+
+                    @elseif($activeAttempt)
+                    {{-- Student is currently in_progress --}}
+                    @if($activeAttempt->disconnected_at !== null)
+                    <span id="action-btn-{{ $e->id }}">
+                        <a href="{{ route('student.exam.take', $activeAttempt) }}"
+                           class="btn btn-sm btn-danger"
+                           style="border:none;font-weight:700">
+                            <i class="bi bi-wifi-off me-1"></i>Reconnect
+                        </a>
+                    </span>
+                    @else
+                    <a href="{{ route('student.exam.take', $activeAttempt) }}"
+                       class="btn btn-sm btn-warning"
+                       style="background:#d4a51c;border:none;color:#fff;font-weight:700">
+                        Continue Exam <i class="bi bi-play-fill ms-1"></i>
+                    </a>
+                    @endif
+
+                    @elseif($finalizedAttempt)
+                    {{--
+                        Student has a finalized attempt (submitted / terminated / suspicious).
+                        Schedule is still open → result not yet published → "View Result".
+                        Schedule has ended   → falls into $isEnded branch above → "View".
+                    --}}
+                    <a href="{{ route('student.exams.show', $e) }}"
+                       class="btn btn-sm btn-outline-secondary"
+                       style="font-weight:600">
+                        <i class="bi bi-hourglass-split me-1"></i>Waiting Result
+                    </a>
+
+                    @else
+                    {{-- No attempt at all and schedule is open — first time start --}}
                     <a href="{{ route('student.exams.show', $e) }}" class="btn btn-sm btn-primary">
                         Start <i class="bi bi-arrow-right ms-1"></i>
                     </a>
@@ -118,7 +186,7 @@
 @push('scripts')
 <script>
 (function () {
-    function formatRemaining(totalSeconds) {
+    function formatHMS(totalSeconds) {
         if (totalSeconds <= 0) return '00:00:00';
         const h = Math.floor(totalSeconds / 3600);
         const m = Math.floor((totalSeconds % 3600) / 60);
@@ -126,24 +194,104 @@
         return [h, m, s].map(n => String(n).padStart(2, '0')).join(':');
     }
 
-    const timers = document.querySelectorAll('[data-countdown-to]');
-    if (!timers.length) return;
+    function formatMS(totalSeconds) {
+        if (totalSeconds <= 0) return '00:00';
+        const m = Math.floor(totalSeconds / 60);
+        const s = totalSeconds % 60;
+        return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+    }
+
+    // ── 1. Upcoming-exam "Starts in" countdown ───────────────────────────
+    // Needs a full page reload when it hits zero — the server state changes.
+    const upcomingTimers = document.querySelectorAll('[data-countdown-to]');
+
+    // ── 2. Recovery countdown ────────────────────────────────────────────
+    // When it hits zero: swap the badge and the Reconnect button in-place.
+    // No page reload — the student is already looking at the card.
+    const recoveryTimers = document.querySelectorAll('[data-recovery-deadline]');
+
+    if (!upcomingTimers.length && !recoveryTimers.length) return;
+
+    // Guard: only reload for upcoming timers that were LIVE on page load.
+    const alreadyExpiredOnLoad = new Set();
+    let reloadScheduled = false;
+
+    const nowOnLoad = Math.floor(Date.now() / 1000);
+    upcomingTimers.forEach(el => {
+        if (parseInt(el.dataset.countdownTo, 10) <= nowOnLoad) {
+            alreadyExpiredOnLoad.add(el);
+        }
+    });
+    // Recovery timers that are already expired on load are also tracked,
+    // so they get swapped immediately on first tick instead of reloading.
+    recoveryTimers.forEach(el => {
+        if (parseInt(el.dataset.recoveryDeadline, 10) <= nowOnLoad) {
+            alreadyExpiredOnLoad.add(el);
+        }
+    });
+
+    // Track which recovery badges have already been swapped to avoid
+    // running the DOM swap on every subsequent tick.
+    const swappedRecovery = new Set();
+
+    function swapToWaitingResult(badgeEl) {
+        const examId  = badgeEl.dataset.examId;
+        const examUrl = badgeEl.dataset.examUrl;
+        if (!examId || swappedRecovery.has(examId)) return;
+        swappedRecovery.add(examId);
+
+        // ── Replace the countdown badge with a muted "Expired" label ────
+        badgeEl.innerHTML = '<i class="bi bi-clock-history me-1"></i>Expired';
+        badgeEl.style.color      = '#6b7280';
+        badgeEl.style.fontWeight = '600';
+
+        // ── Replace the Reconnect button with a clickable "View Result" link ──
+        const btnWrap = document.getElementById('action-btn-' + examId);
+        if (btnWrap && examUrl) {
+            btnWrap.innerHTML =
+                '<a href="' + examUrl + '" class="btn btn-sm btn-outline-secondary" ' +
+                'style="font-weight:600">' +
+                '<i class="bi bi-hourglass-split me-1"></i>View Result' +
+                '</a>';
+        }
+    }
+
+    function scheduleReload() {
+        if (reloadScheduled) return;
+        reloadScheduled = true;
+        setTimeout(() => location.reload(), 1500);
+    }
 
     function tick() {
         const now = Math.floor(Date.now() / 1000);
-        let needsReload = false;
 
-        timers.forEach(el => {
-            const target = parseInt(el.dataset.countdownTo, 10);
+        // Upcoming timers — full reload when window opens
+        upcomingTimers.forEach(el => {
+            const target    = parseInt(el.dataset.countdownTo, 10);
             const remaining = target - now;
-            const valueEl = el.querySelector('.countdown-value');
-            if (valueEl) valueEl.textContent = formatRemaining(remaining);
-            if (remaining <= 0) needsReload = true;
+            const valueEl   = el.querySelector('.countdown-value');
+            if (valueEl) valueEl.textContent = formatHMS(Math.max(0, remaining));
+            if (remaining <= 0 && !alreadyExpiredOnLoad.has(el)) {
+                scheduleReload();
+            }
         });
 
-        if (needsReload) {
-            location.reload();
-        }
+        // Recovery countdown — DOM swap on expiry, never a page reload
+        recoveryTimers.forEach(el => {
+            const deadline  = parseInt(el.dataset.recoveryDeadline, 10);
+            const remaining = deadline - now;
+            const valueEl   = el.querySelector('.recovery-value');
+
+            if (remaining <= 0) {
+                // Show 00:00 for one tick then swap the card UI
+                if (valueEl) valueEl.textContent = '00:00';
+                el.style.color = '#dc2626';
+                swapToWaitingResult(el);
+            } else {
+                if (valueEl) valueEl.textContent = formatMS(remaining);
+                el.style.color = remaining <= 120 ? '#dc2626' : '#d97706';
+            }
+        });
     }
 
     tick();

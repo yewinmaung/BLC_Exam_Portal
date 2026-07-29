@@ -7,6 +7,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SessionRecoveryLog extends Model
 {
+    /**
+     * Fillable columns must exactly match the session_recovery_logs migration:
+     *
+     *   disconnected_duration_seconds  — duration the student was offline (int, nullable)
+     *   browser_info                   — JSON fingerprint for admin evidence
+     *
+     * Intentionally excluded:
+     *   notes — does not exist in the database; removed to prevent silent write failures.
+     */
     protected $fillable = [
         'attempt_id',
         'student_id',
@@ -14,18 +23,19 @@ class SessionRecoveryLog extends Model
         'disconnect_reason',
         'disconnected_at',
         'reconnected_at',
-        'duration_seconds',
+        'disconnected_duration_seconds',
         'last_question_id',
         'ip_address',
         'user_agent',
+        'browser_info',
         'recovery_status',
-        'notes',
     ];
 
     protected $casts = [
-        'disconnected_at'  => 'datetime',
-        'reconnected_at'   => 'datetime',
-        'duration_seconds' => 'integer',
+        'disconnected_at'               => 'datetime',
+        'reconnected_at'                => 'datetime',
+        'disconnected_duration_seconds' => 'integer',
+        'browser_info'                  => 'array',
     ];
 
     public function attempt(): BelongsTo

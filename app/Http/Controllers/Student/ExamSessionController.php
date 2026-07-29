@@ -76,14 +76,20 @@ class ExamSessionController extends Controller
         }
 
         // ── Timer-expiry guard ────────────────────────────────────────────
-        if (now()->gt($attempt->expires_at)) {
+        // expires_at = MIN(started_at + duration, schedule.ends_at).
+        // This single value encodes both the student's personal duration and
+        // the exam open-window end, so one check is sufficient.
+        if (now()->gte($attempt->expires_at)) {
             $this->submitAttempt($attempt);
             return redirect()->route('student.exams.show', $attempt->exam_id)
                 ->with('success', 'Time expired. Exam auto-submitted.');
         }
 
-        // ── Schedule-end guard ────────────────────────────────────────────
-        if ($schedule && now()->gt($schedule->ends_at)) {
+        // ── Schedule-end guard (belt-and-braces for legacy attempts) ──────
+        // For attempts created after the timing fix expires_at already encodes
+        // ends_at, so this guard is redundant.  It stays to protect older
+        // attempts whose expires_at was stored without the MIN cap.
+        if ($schedule && now()->gte($schedule->ends_at)) {
             $this->submitAttempt($attempt);
             return redirect()->route('student.exams.show', $attempt->exam_id)
                 ->with('success', 'Exam schedule ended. Exam auto-submitted.');

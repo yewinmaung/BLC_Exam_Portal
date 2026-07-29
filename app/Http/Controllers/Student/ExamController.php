@@ -27,11 +27,25 @@ class ExamController extends Controller
             ->latest()
             ->paginate(15);
 
-        // Map exam_id => active in_progress attempt (for list card actions)
+        $examIds = $exams->pluck('id');
+
+        // Active in_progress attempts — drives Continue/Reconnect/recovery buttons.
+        // Select disconnected_at so the card can show the recovery countdown.
         $activeAttempts = ExamAttempt::where('student_id', $studentId)
             ->where('status', 'in_progress')
-            ->whereIn('exam_id', $exams->pluck('id'))
-            ->get()
+            ->whereIn('exam_id', $examIds)
+            ->get(['id', 'exam_id', 'student_id', 'status', 'started_at', 'expires_at', 'disconnected_at'])
+            ->keyBy('exam_id');
+
+        // Finalized attempts — submitted, terminated, suspicious, rejected.
+        // Used to show "View Result" or "View" instead of "Start" when the
+        // student has already taken the exam (or been terminated from it).
+        // Keyed by exam_id; picks the most recent attempt per exam.
+        $finalizedAttempts = ExamAttempt::where('student_id', $studentId)
+            ->whereIn('status', ['submitted', 'terminated', 'suspicious', 'rejected', 'terminated_pending_review'])
+            ->whereIn('exam_id', $examIds)
+            ->orderByDesc('id')
+            ->get(['id', 'exam_id', 'student_id', 'status', 'attempt_number'])
             ->keyBy('exam_id');
 
         $securityTerminatedAttempts = ExamAttempt::where('student_id', $studentId)
@@ -43,7 +57,9 @@ class ExamController extends Controller
         // Mark exam notifications as read when student opens Exams page
         \App\Models\UserNotification::markCategoryRead($studentId, 'exam');
 
-        return view('student.exams.index', compact('exams', 'securityTerminatedAttempts', 'activeAttempts'));
+        return view('student.exams.index', compact(
+            'exams', 'securityTerminatedAttempts', 'activeAttempts', 'finalizedAttempts'
+        ));
     }
 
     public function show(Exam $exam)
@@ -139,6 +155,19 @@ class ExamController extends Controller
             shuffle($questionIds);
         }
 
+        // ── Final Expiry = MIN(Start + Duration, Exam Open End) ──────────────
+        // This enforces two independent teacher-controlled concepts:
+        //   1. Exam Open Window  → $schedule->ends_at  (when students may start/be active)
+        //   2. Exam Duration     → $schedule->duration_minutes (personal countdown per student)
+        //
+        // A student who starts late gets less effective time, but never more than
+        // the open window allows.  Both guards are then enforced server-side on
+        // every page load and inside the session recovery service.
+        $durationExpiry  = now()->addMinutes($schedule->duration_minutes);
+        $finalExpiry     = $durationExpiry->lessThan($schedule->ends_at)
+                           ? $durationExpiry
+                           : $schedule->ends_at->copy();
+
         $attempt = ExamAttempt::create([
             'exam_id'        => $exam->id,
             'schedule_id'    => $schedule->id,
@@ -146,7 +175,7 @@ class ExamController extends Controller
             'attempt_number' => $attemptCount + 1,
             'status'         => 'in_progress',
             'started_at'     => now(),
-            'expires_at'     => now()->addMinutes($schedule->duration_minutes),
+            'expires_at'     => $finalExpiry,
             'session_token'  => $token,
             'question_order' => $questionIds,
         ]);
