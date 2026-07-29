@@ -138,7 +138,13 @@ class ExamSecurityService
     ): array {
         $newCount = $attempt->warning_count + 1;
 
-        $this->persistViolationLog($attempt, $type, $details, $client, $ip, $newCount);
+        // warning_number is per-violation-type: how many times this exact
+        // violation type has already been logged for this attempt, plus one.
+        $typeWarningNumber = CheatingLog::where('attempt_id', $attempt->id)
+            ->where('violation_type', $type)
+            ->count() + 1;
+
+        $this->persistViolationLog($attempt, $type, $details, $client, $ip, $typeWarningNumber);
         $attempt->increment('warning_count');
         $attempt->refresh();
 
@@ -178,7 +184,12 @@ class ExamSecurityService
 
             $newCount = $locked->warning_count + 1;
 
-            $this->persistViolationLog($locked, $type, $details, $client, $ip, $newCount);
+            // warning_number is per-violation-type within this attempt.
+            $typeWarningNumber = CheatingLog::where('attempt_id', $locked->id)
+                ->where('violation_type', $type)
+                ->count() + 1;
+
+            $this->persistViolationLog($locked, $type, $details, $client, $ip, $typeWarningNumber);
 
             $locked->update([
                 'warning_count' => $newCount,

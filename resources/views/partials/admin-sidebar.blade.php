@@ -51,7 +51,7 @@
     </a>
 
   
-{{-- Majors --}}
+ {{-- Majors --}}
     <a class="nav-link {{ request()->routeIs('admin.majors.*') ? 'active' : '' }}"
        href="{{ route('admin.majors.index') }}">
         <i class="bi bi-collection"></i> Majors

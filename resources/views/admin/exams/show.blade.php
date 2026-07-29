@@ -233,6 +233,7 @@
     const startsAt      = document.getElementById('starts_at');
     const endsAt        = document.getElementById('ends_at');
     const durationInput = document.getElementById('duration_minutes');
+    const scheduleForm  = document.getElementById('scheduleForm');
 
     if (!startsAt) return;
 
@@ -254,6 +255,8 @@
         if (isNaN(start.getTime()) || isNaN(duration) || duration < 1) return;
         const end = new Date(start.getTime() + duration * 60000);
         endsAt.value = toLocalInput(end);
+        // Update the minimum allowed value for ends_at
+        endsAt.min = toLocalInput(new Date(start.getTime() + 60000)); // at least 1 min after start
     }
 
     // Set default start = now rounded up to next 5 minutes
@@ -267,10 +270,44 @@
         if (!startsAt.value) {
             startsAt.value = toLocalInput(now);
         }
+        // Set minimum for starts_at to now
+        startsAt.min = toLocalInput(new Date());
         updateEndTime();
     }
 
-    startsAt.addEventListener('change', updateEndTime);
+    // Client-side validation before submit
+    scheduleForm?.addEventListener('submit', function (e) {
+        if (!startsAt.value || !endsAt.value) return;
+        const start = new Date(startsAt.value);
+        const end   = new Date(endsAt.value);
+        if (end <= start) {
+            e.preventDefault();
+            endsAt.setCustomValidity('End time must be after start time.');
+            endsAt.reportValidity();
+        } else {
+            endsAt.setCustomValidity('');
+        }
+    });
+
+    startsAt.addEventListener('change', () => {
+        endsAt.setCustomValidity('');
+        updateEndTime();
+    });
+    endsAt.addEventListener('change', function () {
+        if (!startsAt.value) return;
+        const start = new Date(startsAt.value);
+        const end   = new Date(this.value);
+        if (end <= start) {
+            this.setCustomValidity('End time must be after start time.');
+        } else {
+            this.setCustomValidity('');
+            // Update duration to match manual end time selection
+            if (durationInput) {
+                const mins = Math.round((end - start) / 60000);
+                if (mins > 0) durationInput.value = mins;
+            }
+        }
+    });
     durationInput?.addEventListener('input', updateEndTime);
 
     // Run on page load

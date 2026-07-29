@@ -331,6 +331,7 @@
       data-submit-url="{{ route('student.exam.submit', $attempt) }}"
       data-disconnect-url="{{ route('student.exam.disconnect', $attempt) }}"
       data-ends-at="{{ $endsAt }}"
+      data-warning-count="{{ $attempt->warning_count }}"
       data-session-recovery="{{ ($isSessionRecovery ?? false) ? '1' : '0' }}"
       data-returning="{{ ($isReturning ?? false) ? '1' : '0' }}"
       data-resume-question-id="{{ $resumeQuestionId ?? '' }}"
@@ -404,6 +405,47 @@
         <button class="fs-recovery-return-btn" id="fsRecoveryReturnBtn">
             <i class="bi bi-fullscreen me-2"></i>Return to Fullscreen
         </button>
+    </div>
+</div>
+
+{{-- Decision modal: shown after FULLSCREEN_EXIT + FOCUS_LOST compound violation --}}
+<div class="fs-recovery-overlay" id="finalWarningOverlay" style="display:none">
+    <div class="fs-recovery-box" style="max-width:460px;border-top:4px solid #dc2626">
+        <div class="fs-recovery-icon" style="background:linear-gradient(135deg,#991b1b,#dc2626)">
+            <i class="bi bi-shield-exclamation"></i>
+        </div>
+        <h4 style="color:#991b1b">🚨 Security Violation Detected</h4>
+        <p style="color:#7f1d1d;font-size:0.88rem;line-height:1.6">
+            <strong>Detected violations:</strong><br>
+            • Fullscreen Exit<br>
+            • Focus Lost<br><br>
+            Warnings used: <strong id="finalWarningCount">2</strong>/3<br><br>
+            Do you want to continue the exam?
+            The exam will automatically restore fullscreen in:
+        </p>
+        <div class="fs-recovery-countdown-wrap">
+            <div class="fs-recovery-countdown-num" id="finalWarningCountdown"
+                 style="color:#dc2626;font-size:2.4rem">15</div>
+            <div class="fs-recovery-countdown-label">seconds — auto-restore fullscreen</div>
+        </div>
+        <div class="fs-recovery-progress-track">
+            <div class="fs-recovery-progress-bar" id="finalWarningBar"
+                 style="width:100%;background:#dc2626"></div>
+        </div>
+        <div class="d-flex gap-2 mt-1">
+            <button id="finalWarningReturn"
+                    style="flex:1;padding:0.75rem;background:linear-gradient(135deg,var(--navy-2),var(--navy-dark));
+                           color:#fff;border:none;border-radius:10px;font-size:0.88rem;font-weight:700;
+                           cursor:pointer;font-family:'Inter',sans-serif">
+                <i class="bi bi-fullscreen me-1"></i>Continue / Return Fullscreen
+            </button>
+            <button id="finalWarningExit"
+                    style="flex:1;padding:0.75rem;background:#dc2626;
+                           color:#fff;border:none;border-radius:10px;font-size:0.88rem;font-weight:700;
+                           cursor:pointer;font-family:'Inter',sans-serif">
+                <i class="bi bi-x-circle me-1"></i>Exit Fullscreen
+            </button>
+        </div>
     </div>
 </div>
 
