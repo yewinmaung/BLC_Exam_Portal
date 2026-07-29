@@ -130,7 +130,35 @@ class ExamAttempt extends Model
         ]);
     }
 
-    // ── Session recovery helpers ─────────────────────────────────────────
+    // ── Display helpers ──────────────────────────────────────────────────
+
+    /**
+     * Returns true when this attempt should be displayed as "Absent".
+     *
+     * Conditions (ALL must be true):
+     *  1. status is still 'in_progress'   — never formally submitted
+     *  2. The exam open window has ended   — student can no longer continue
+     *  3. No answers were saved            — student did not meaningfully participate
+     *
+     * This is a DISPLAY-ONLY helper. It does not change the database status.
+     * The active exam flow, session recovery, and auto-submit are unaffected.
+     *
+     * @param  \App\Models\ExamSchedule|null  $schedule
+     */
+    public function isDisplayedAsAbsent(?ExamSchedule $schedule): bool
+    {
+        if ($this->status !== 'in_progress') {
+            return false;
+        }
+
+        // Schedule must exist and its window must have ended
+        if (! $schedule || now()->lt($schedule->ends_at)) {
+            return false;
+        }
+
+        // Student left no answers — they did not participate
+        return $this->studentAnswers()->doesntExist();
+    }
 
     /**
      * Returns true when the student's session is in a temporary disconnect

@@ -291,7 +291,23 @@
         @endphp
 
         @if($activeAttempt)
-        {{-- Resume exam button for in_progress attempts --}}
+        {{-- If the schedule has already ended, the student can no longer continue.
+             Show an "Exam Ended" panel instead of the Resume button. --}}
+        @if($scheduleEnded)
+        <div class="card mb-3">
+            <div class="card-body text-center py-4">
+                <i class="bi bi-calendar-check d-block mb-2" style="font-size:2rem;color:var(--blc-gold)"></i>
+                <div style="font-weight:600;color:var(--blc-navy)" class="mb-1">Exam Ended</div>
+                <div class="text-muted small mb-3">Ended {{ $schedule->ends_at->diffForHumans() }}</div>
+                <div class="p-2 rounded text-start mb-3"
+                     style="background:#fef2f2;border:1px solid #fecaca;font-size:0.78rem;color:#991b1b">
+                    <i class="bi bi-exclamation-circle-fill me-1"></i>
+                    Your session was not completed before the exam window closed.
+                </div>
+            </div>
+        </div>
+        @else
+        {{-- Schedule still open — student can resume --}}
         <div class="card mb-3" style="border-color:rgba(212,165,28,0.4) !important;border-width:2px !important">
             <div class="card-body text-center py-4">
                 <div style="width:64px;height:64px;border-radius:16px;
@@ -312,13 +328,15 @@
                     <i class="bi bi-info-circle-fill me-1"></i>
                     Click below to continue your exam. Your previous answers are saved.
                 </div>
-                <a href="{{ route('student.exam.take', $activeAttempt) }}" 
+                <a href="{{ route('student.exam.take', $activeAttempt) }}"
                    class="btn btn-warning w-100 py-2"
                    style="font-size:0.95rem;font-weight:700;background:#d4a51c;border:none;color:#fff">
                     <i class="bi bi-arrow-right-circle-fill me-1"></i> Continue Exam
                 </a>
             </div>
         </div>
+        @endif {{-- end $scheduleEnded guard --}}
+
         @else
         {{-- Active: Start button (no active attempt) --}}
         <div class="card mb-3" style="border-color:rgba(15,58,122,0.25) !important">
@@ -403,10 +421,20 @@
             <div class="card-body p-0">
                 @foreach($attempts as $att)
                 @php
-                    $attStatusClass = match($att->status) {
-                        'submitted'  => 'status-approved',
-                        'in_progress' => 'status-pending',
-                        default      => 'status-closed',
+                    // Display-only absent override:
+                    // in_progress + schedule ended + no answers = student did not sit the exam.
+                    $isAbsent = $att->isDisplayedAsAbsent($schedule);
+
+                    $attStatusClass = match(true) {
+                        $isAbsent            => 'status-closed',
+                        $att->status === 'submitted'   => 'status-approved',
+                        $att->status === 'in_progress' => 'status-pending',
+                        default              => 'status-closed',
+                    };
+
+                    $attStatusLabel = match(true) {
+                        $isAbsent            => 'Absent',
+                        default              => ucfirst(str_replace('_', ' ', $att->status)),
                     };
                 @endphp
                 <div class="p-3 border-bottom">
@@ -420,9 +448,16 @@
                             </div>
                         </div>
                         <span class="status-pill {{ $attStatusClass }}" style="font-size:0.7rem">
-                            {{ ucfirst(str_replace('_', ' ', $att->status)) }}
+                            {{ $attStatusLabel }}
                         </span>
                     </div>
+                    @if($isAbsent)
+                    <div class="mt-1">
+                        <span class="text-muted" style="font-size:0.72rem">
+                            Student did not complete this exam.
+                        </span>
+                    </div>
+                    @endif
                     {{-- Show score if result exists and schedule has ended --}}
                     @if($scheduleEnded && $att->result && $att->result->is_published)
                     <div class="mt-1 d-flex align-items-center gap-2">
