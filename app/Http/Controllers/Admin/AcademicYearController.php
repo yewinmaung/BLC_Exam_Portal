@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Enums\RecordType;
 use App\Enums\RoleSlug;
 use App\Http\Controllers\Controller;
 use App\Models\AcademicYear;
@@ -9,11 +10,15 @@ use App\Models\StudentYearRecord;
 use App\Models\User;
 use App\Models\YearLevel;
 use App\Services\AcademicService;
+use App\Services\YearLevelProgressionValidator;
 use Illuminate\Http\Request;
 
 class AcademicYearController extends Controller
 {
-    public function __construct(private AcademicService $academicService) {}
+    public function __construct(
+        private AcademicService $academicService,
+        private YearLevelProgressionValidator $progressionValidator
+    ) {}
 
     /* ── CRUD ─────────────────────────────────────────────────── */
 
@@ -148,6 +153,9 @@ class AcademicYearController extends Controller
 
     public function assignStudents(Request $request, AcademicYear $year)
     {
+        $recordType = $request->input('record_type') ?? RecordType::NORMAL;
+        $requiresRemark = in_array($recordType, [RecordType::TRANSFER, RecordType::READMISSION], true);
+
         $data = $request->validate([
             'student_ids'   => 'required|array|min:1',
             'student_ids.*' => 'exists:users,id',
@@ -155,10 +163,18 @@ class AcademicYearController extends Controller
             'semester'      => 'required|in:1,2',
             'department'    => 'nullable|string|max:100',
             'major'         => 'nullable|string|max:100',
+            'record_type'   => 'nullable|in:' . implode(',', RecordType::ALL),
+            'remark'        => $requiresRemark
+                ? ['required', 'string', 'max:1000']
+                : ['nullable', 'string', 'max:1000'],
         ]);
 
-        $created = 0;
-        $skipped = 0;
+        $newYearLevel = YearLevel::find($data['year_level_id']);
+        $recordType   = $data['record_type'] ?? null;
+
+        $created  = 0;
+        $skipped  = 0;
+        $rejected = [];
 
         foreach ($data['student_ids'] as $studentId) {
             $exists = StudentYearRecord::where([
@@ -173,6 +189,21 @@ class AcademicYearController extends Controller
                 continue;
             }
 
+            // Validate year-level progression
+            if ($newYearLevel) {
+                $progressionError = $this->progressionValidator->validate(
+                    (int) $studentId,
+                    $newYearLevel->level,
+                    $year->id,
+                    $recordType
+                );
+                if ($progressionError) {
+                    $student = User::find($studentId);
+                    $rejected[] = ($student?->name ?? "Student #{$studentId}") . ': ' . $progressionError;
+                    continue;
+                }
+            }
+
             StudentYearRecord::create([
                 'student_id'       => $studentId,
                 'academic_year_id' => $year->id,
@@ -181,6 +212,8 @@ class AcademicYearController extends Controller
                 'department'       => $data['department'] ?? null,
                 'major'            => $data['major'] ?? null,
                 'status'           => 'active',
+                'record_type'      => $recordType,
+                'remark'           => $data['remark'] ?? null,
             ]);
             $created++;
         }
@@ -188,6 +221,11 @@ class AcademicYearController extends Controller
         $msg = "{$created} student(s) assigned to {$year->name}.";
         if ($skipped > 0) {
             $msg .= " {$skipped} already enrolled (skipped).";
+        }
+
+        if (!empty($rejected)) {
+            return back()->with('success', $msg)
+                ->withErrors(['year_level_id' => implode(' | ', $rejected)]);
         }
 
         return back()->with('success', $msg);

@@ -96,6 +96,16 @@
                             </select>
                         </div>
                         <div class="col-sm-4">
+                            <label class="form-label">Student Type</label>
+                            <select name="record_type" id="sel_record_type" class="form-select">
+                                @foreach(\App\Enums\RecordType::LABELS as $value => $label)
+                                <option value="{{ $value }}" {{ old('record_type', $currentRecord?->record_type ?? \App\Enums\RecordType::NORMAL) === $value ? 'selected' : '' }}>
+                                    {{ $label }}
+                                </option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="col-sm-4">
                             <label class="form-label">Department</label>
                             <input type="text" name="department" class="form-control"
                                    value="{{ old('department', $currentRecord?->department) }}">
@@ -117,6 +127,20 @@
                                 @endforeach
                             </select>
                             @error('major_id')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
+                        </div>
+
+                        {{-- Remark: required for Transfer / Re-admission --}}
+                        <div class="col-12" id="remarkWrapper">
+                            <label class="form-label" id="remarkLabel">
+                                Remark
+                                <span class="text-danger" id="remarkRequired" style="display:none">*</span>
+                                <span class="text-muted fw-normal" id="remarkOptional" style="font-size:0.8rem">(optional for Normal)</span>
+                            </label>
+                            <textarea name="remark" id="inp_remark"
+                                      class="form-control @error('remark') is-invalid @enderror"
+                                      rows="2" maxlength="1000"
+                                      placeholder="e.g. Re-admitted after leave of absence.">{{ old('remark', $currentRecord?->remark) }}</textarea>
+                            @error('remark')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
                         </div>
                     </div>
                 </div>
@@ -219,6 +243,30 @@
 
     selYearLevel.addEventListener('change', toggleMajor);
     toggleMajor();
+
+    // Toggle remark required indicator based on record_type
+    const selRecordType = document.getElementById('sel_record_type');
+    const remarkReqBadge = document.getElementById('remarkRequired');
+    const remarkOptNote  = document.getElementById('remarkOptional');
+    const remarkInput    = document.getElementById('inp_remark');
+
+    function toggleRemark() {
+        if (!selRecordType || !remarkInput) return;
+        const type = selRecordType.value;
+        const requiresRemark = (type === 'TRANSFER' || type === 'READMISSION');
+
+        if (remarkReqBadge) remarkReqBadge.style.display = requiresRemark ? 'inline' : 'none';
+        if (remarkOptNote)  remarkOptNote.style.display  = requiresRemark ? 'none'   : 'inline';
+        remarkInput.required = requiresRemark;
+        // Hide the entire wrapper when NORMAL — remark only applies to TRANSFER/READMISSION
+        document.getElementById('remarkWrapper').style.display = requiresRemark ? '' : 'none';
+        if (!requiresRemark) remarkInput.value = '';
+    }
+
+    if (selRecordType) {
+        selRecordType.addEventListener('change', toggleRemark);
+        toggleRemark();
+    }
 })();
 </script>
 @endpush

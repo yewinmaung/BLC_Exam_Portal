@@ -56,6 +56,18 @@
                     <div style="font-weight:600;font-size:0.875rem">{{ $yr->academicYear->name }}</div>
                     <div class="text-muted small">{{ $yr->yearLevel->name }} · Sem {{ $yr->semester }}</div>
                     @if($yr->department)<div class="text-muted small">{{ $yr->department }}</div>@endif
+                    @if($yr->record_type && $yr->record_type !== \App\Enums\RecordType::NORMAL)
+                    <div class="text-muted small mt-1">
+                        <span class="badge" style="background:#fef9c3;color:#92400e;font-size:0.65rem;font-weight:700">
+                            {{ \App\Enums\RecordType::LABELS[$yr->record_type] ?? $yr->record_type }}
+                        </span>
+                    </div>
+                    @endif
+                    @if($yr->remark)
+                    <div class="text-muted small mt-1" style="font-style:italic;font-size:0.75rem">
+                        <i class="bi bi-chat-left-text me-1"></i>{{ $yr->remark }}
+                    </div>
+                    @endif
                     @if($yr->major)
                     <div class="text-muted small">
                         <i class="bi bi-collection me-1"></i>

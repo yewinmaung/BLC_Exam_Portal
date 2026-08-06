@@ -106,7 +106,7 @@
     <div class="login-brand">
         <img src="{{ asset('images/logo.png') }}" alt="Believe Learning Center">
         <h1>Believe Learning Center</h1>
-        <div class="sub">University Management System</div>
+        <div class="sub">Exam Management System</div>
     </div>
 
     {{-- Card --}}

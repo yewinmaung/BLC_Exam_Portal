@@ -156,7 +156,7 @@
     <div class="login-brand">
         <img src="{{ asset('images/logo.png') }}" alt="Believe Learning Center">
         <h1>Believe Learning Center</h1>
-        <div class="sub">University Management System</div>
+        <div class="sub">Exam Management System</div>
     </div>
 
     {{-- Card --}}
@@ -276,10 +276,10 @@
             </div>
 
             {{-- Remember me --}}
-            <div class="remember-row">
+            <!-- <div class="remember-row">
                 <input type="checkbox" id="remember" name="remember" {{ $isLocked ? 'disabled' : '' }}>
                 <label for="remember">Remember me</label>
-            </div>
+            </div> -->
 
             <button type="submit" class="btn-submit" id="submitBtn" {{ $isLocked ? 'disabled' : '' }}>
                 @if($isLocked)

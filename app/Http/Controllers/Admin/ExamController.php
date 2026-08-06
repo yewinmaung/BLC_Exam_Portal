@@ -208,7 +208,7 @@ class ExamController extends Controller
         }
 
         $data = $request->validate([
-            'starts_at'        => 'required|date',
+            'starts_at'        => 'required|date|after_or_equal:now',
             'ends_at'          => 'required|date|after:starts_at',
             // duration_minutes controls each student's personal countdown.
             // It is intentionally independent of ends_at — the server caps
@@ -219,6 +219,9 @@ class ExamController extends Controller
             'duration_minutes' => 'required|integer|min:1',
             'attempt_limit'    => 'required|integer|min:1',
             'target_year'      => 'nullable|integer|min:1|max:5',
+        ], [
+            'starts_at.after_or_equal' => 'Open Window Start cannot be in the past.',
+            'ends_at.after'            => 'Open Window End must be after Open Window Start.',
         ]);
 
         ExamSchedule::create([

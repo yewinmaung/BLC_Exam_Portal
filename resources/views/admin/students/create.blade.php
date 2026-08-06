@@ -89,6 +89,18 @@
                     </div>
 
                     <div class="col-sm-4">
+                        <label class="form-label">Student Type</label>
+                        <select name="record_type" id="sel_record_type" class="form-select">
+                            @foreach(\App\Enums\RecordType::LABELS as $value => $label)
+                            <option value="{{ $value }}" {{ old('record_type', \App\Enums\RecordType::NORMAL) === $value ? 'selected' : '' }}>
+                                {{ $label }}
+                            </option>
+                            @endforeach
+                        </select>
+                        <div class="form-text">Transfer students may start at any year level.</div>
+                    </div>
+
+                    <div class="col-sm-4">
                         <label class="form-label">Department</label>
                         <input type="text" name="department" class="form-control" value="{{ old('department') }}" placeholder="e.g. Computer Science">
                     </div>
@@ -109,6 +121,18 @@
                             @endforeach
                         </select>
                         @error('major_id')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
+                    </div>
+
+                    {{-- Remark: required for Transfer / Re-admission --}}
+                    <div class="col-12" id="remarkWrapper" style="display:none">
+                        <label class="form-label" id="remarkLabel">
+                            Remark <span class="text-danger">*</span>
+                        </label>
+                        <textarea name="remark" id="inp_remark"
+                                  class="form-control @error('remark') is-invalid @enderror"
+                                  rows="2" maxlength="1000"
+                                  placeholder="e.g. Transferred from University of Computer Studies (Yangon).">{{ old('remark') }}</textarea>
+                        @error('remark')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
                     </div>
                 </div>
             </div>
@@ -206,6 +230,26 @@
 
     selYearLevel.addEventListener('change', toggleMajor);
     toggleMajor();
+
+    // Toggle remark field based on record_type
+    const selRecordType  = document.getElementById('sel_record_type');
+    const remarkWrapper  = document.getElementById('remarkWrapper');
+    const remarkInput    = document.getElementById('inp_remark');
+
+    function toggleRemark() {
+        if (!selRecordType || !remarkWrapper || !remarkInput) return;
+        const type = selRecordType.value;
+        const requiresRemark = (type === 'TRANSFER' || type === 'READMISSION');
+
+        remarkWrapper.style.display = requiresRemark ? 'block' : 'none';
+        remarkInput.required = requiresRemark;
+        if (!requiresRemark) remarkInput.value = '';
+    }
+
+    if (selRecordType) {
+        selRecordType.addEventListener('change', toggleRemark);
+        toggleRemark();
+    }
 })();
 </script>
 @endpush

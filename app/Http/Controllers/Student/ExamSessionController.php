@@ -44,25 +44,52 @@ class ExamSessionController extends Controller
 
         $schedule = $attempt->schedule;
 
-        // ── Expired recovery check ────────────────────────────────────────
-        // If the attempt is in_progress AND has a disconnected_at timestamp,
-        // the student was previously disconnected.
-        // Handle reconnect: either restore the session or finalize it.
+        // ── Disconnect recovery guard ─────────────────────────────────────
+        // If the attempt has a disconnected_at timestamp the student's session
+        // was interrupted. Two sub-cases:
+        //
+        //   A) Recovery window still open (elapsed < recovery_time_limit AND
+        //      expires_at not passed): block entry to the exam page and send
+        //      the student back to the exam list where the countdown badge is
+        //      shown. Answers are already saved; nothing is lost.
+        //
+        //   B) Recovery window expired OR expires_at passed: fall through to
+        //      handleReconnect() which auto-submits and grades the attempt
+        //      using the saved answers, then redirects with a message.
+        //
         if ($attempt->status === 'in_progress' && $attempt->disconnected_at !== null) {
+            if ($attempt->canAutoRecover()) {
+                // Window still open — do NOT render the exam page.
+                $recoveryLimit    = (int) config('exam_security.recovery_time_limit', 300);
+                $recoveryDeadline = $attempt->disconnected_at->copy()->addSeconds($recoveryLimit);
+                $remaining        = max(0, (int) now()->diffInSeconds($recoveryDeadline, false));
+                $minutes          = (int) floor($remaining / 60);
+                $seconds          = $remaining % 60;
+                $countdownStr     = sprintf('%d:%02d', $minutes, $seconds);
+
+                return redirect()->route('student.exams.index')
+                    ->with('info',
+                        "Your exam session was interrupted. "
+                        . "You cannot re-enter the exam during the recovery window. "
+                        . "Your saved answers are safe. "
+                        . "The exam will be automatically submitted in {$countdownStr}."
+                    );
+            }
+
+            // Window expired — let handleReconnect() finalize and grade.
             $result = $this->recovery->handleReconnect($attempt);
 
             if (! $result['success']) {
-                // Recovery timed out — attempt is now submitted and graded.
                 return redirect()->route('student.exams.show', $attempt->exam_id)
                     ->with('error', $result['message']);
             }
 
-            // Capture last question before refresh (disconnected_at is cleared; last_question_id stays).
+            // (Path A of handleReconnect should not be reached here because
+            //  canAutoRecover() returned false above, but kept for safety.)
             $resumeQuestionId = $attempt->last_question_id;
             $attempt->refresh();
             session()->flash('info', $result['message']);
 
-            // Use the frozen remaining seconds returned by the service.
             $finalAvailableSeconds = $result['frozen_seconds'] ?? 0;
             $effectiveEndsAt       = now()->addSeconds($finalAvailableSeconds);
 

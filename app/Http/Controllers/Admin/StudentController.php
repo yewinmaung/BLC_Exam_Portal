@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Enums\RecordType;
 use App\Enums\RoleSlug;
 use App\Http\Controllers\Controller;
 use App\Models\AcademicYear;
@@ -14,6 +15,7 @@ use App\Models\User;
 use App\Models\YearLevel;
 use App\Services\ActivityLogService;
 use App\Services\EmailService;
+use App\Services\YearLevelProgressionValidator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 
@@ -21,7 +23,8 @@ class StudentController extends Controller
 {
     public function __construct(
         private ActivityLogService $activityLog,
-        private EmailService $emailService
+        private EmailService $emailService,
+        private YearLevelProgressionValidator $progressionValidator
     ) {}
 
     public function index(Request $request)
@@ -78,6 +81,8 @@ class StudentController extends Controller
             'major_id'         => $this->majorRules($request),
             'semester'         => 'nullable|in:1,2',
             'department'       => 'nullable|string|max:100',
+            'record_type'      => 'nullable|in:' . implode(',', RecordType::ALL),
+            'remark'           => $this->remarkRules($request),
             'course_ids'       => 'nullable|array',
             'course_ids.*'     => 'exists:courses,id',
         ]);
@@ -102,6 +107,24 @@ class StudentController extends Controller
 
         // Assign to academic year record if provided
         if (!empty($data['academic_year_id']) && !empty($data['year_level_id'])) {
+            $newYearLevel  = YearLevel::find($data['year_level_id']);
+            $recordType    = $data['record_type'] ?? null;
+
+            // Run year-level progression validation before creating the record
+            if ($newYearLevel) {
+                $progressionError = $this->progressionValidator->validate(
+                    $student->id,
+                    $newYearLevel->level,
+                    (int) $data['academic_year_id'],
+                    $recordType
+                );
+                if ($progressionError) {
+                    // Rollback the just-created student and return with error
+                    $student->forceDelete();
+                    return back()->withInput()->withErrors(['year_level_id' => $progressionError]);
+                }
+            }
+
             StudentYearRecord::create([
                 'student_id'       => $student->id,
                 'academic_year_id' => $data['academic_year_id'],
@@ -110,6 +133,8 @@ class StudentController extends Controller
                 'department'       => $data['department'] ?? null,
                 'major'            => $this->majorNameFromId($data['major_id'] ?? null),
                 'status'           => 'active',
+                'record_type'      => $recordType,
+                'remark'           => $data['remark'] ?? null,
             ]);
         }
 
@@ -222,6 +247,8 @@ class StudentController extends Controller
             'major_id'         => $this->majorRules($request),
             'semester'         => 'nullable|in:1,2',
             'department'       => 'nullable|string|max:100',
+            'record_type'      => 'nullable|in:' . implode(',', RecordType::ALL),
+            'remark'           => $this->remarkRules($request),
             'course_ids'       => 'nullable|array',
             // Enforce that every submitted course ID is within the allowed scope —
             // this blocks URL/request tampering regardless of UI bypasses.
@@ -241,6 +268,46 @@ class StudentController extends Controller
 
         // Update/create year record
         if (!empty($data['academic_year_id']) && !empty($data['year_level_id'])) {
+            $newYearLevel = YearLevel::find($data['year_level_id']);
+            $recordType   = $data['record_type'] ?? null;
+
+            if ($newYearLevel) {
+                // Determine whether this is editing the EXISTING record or adding a NEW one.
+                //
+                // EDIT path: submitted values exactly match the current active record
+                //   → exclude that record from the timeline so it isn't validated against itself.
+                //
+                // CREATE path: the admin changed academic year or year level
+                //   → treat it as appending a new record; include ALL existing records.
+                //
+                $isEditingSameRecord = $currentRecord
+                    && (int) $currentRecord->academic_year_id === (int) $data['academic_year_id']
+                    && (int) $currentRecord->year_level_id    === (int) $data['year_level_id'];
+
+                if ($isEditingSameRecord) {
+                    // EDIT path: exclude the record being updated to avoid self-conflict.
+                    $progressionError = $this->progressionValidator->validateEdit(
+                        $student->id,
+                        $newYearLevel->level,
+                        (int) $data['academic_year_id'],
+                        $recordType,
+                        $currentRecord->id
+                    );
+                } else {
+                    // CREATE path: adding a new (academic_year, year_level) combination.
+                    $progressionError = $this->progressionValidator->validate(
+                        $student->id,
+                        $newYearLevel->level,
+                        (int) $data['academic_year_id'],
+                        $recordType
+                    );
+                }
+
+                if ($progressionError) {
+                    return back()->withInput()->withErrors(['year_level_id' => $progressionError]);
+                }
+            }
+
             StudentYearRecord::updateOrCreate(
                 [
                     'student_id'       => $student->id,
@@ -248,10 +315,12 @@ class StudentController extends Controller
                     'year_level_id'    => $data['year_level_id'],
                 ],
                 [
-                    'semester'   => $data['semester'] ?? '1',
-                    'department' => $data['department'] ?? null,
-                    'major'      => $this->majorNameFromId($data['major_id'] ?? null),
-                    'status'     => 'active',
+                    'semester'    => $data['semester'] ?? '1',
+                    'department'  => $data['department'] ?? null,
+                    'major'       => $this->majorNameFromId($data['major_id'] ?? null),
+                    'status'      => 'active',
+                    'record_type' => $recordType,
+                    'remark'      => $data['remark'] ?? null,
                 ]
             );
         }
@@ -439,5 +508,16 @@ class StudentController extends Controller
     private function majorNameFromId(?int $majorId): ?string
     {
         return $majorId ? Major::find($majorId)?->name : null;
+    }
+
+    /** @return array<int, mixed> */
+    private function remarkRules(Request $request): array
+    {
+        $type = $request->input('record_type') ?? RecordType::NORMAL;
+        $requiresRemark = in_array($type, [RecordType::TRANSFER, RecordType::READMISSION], true);
+
+        return $requiresRemark
+            ? ['required', 'string', 'max:1000']
+            : ['nullable', 'string', 'max:1000'];
     }
 }

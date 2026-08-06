@@ -924,13 +924,13 @@ POST /student/exams/{exam}/start
 
 ## PART 7 — JOB AND QUEUE SYSTEM
 
-### Queue Configuration
-- **Driver:** Database (jobs table, created by migration 2026_06_11_000002)
-- **Queue name:** `emails` (all three jobs use this queue)
-- **Worker command:** `php artisan queue:work --queue=emails`
-- **Scheduler:** `email:process-scheduled` runs every minute via `app/Console/Kernel.php`
+    ### Queue Configuration
+    - **Driver:** Database (jobs table, created by migration 2026_06_11_000002)
+    - **Queue name:** `emails` (all three jobs use this queue)
+    - **Worker command:** `php artisan queue:work --queue=emails`
+    - **Scheduler:** `email:process-scheduled` runs every minute via `app/Console/Kernel.php`
 
----
+    ---
 
 ### `SendEmailJob`
 | Property | Value |

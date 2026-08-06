@@ -128,6 +128,7 @@ class EnrollmentController extends Controller
 
     public function store(Request $request)
     {
+       
         $data = $request->validate([
             'course_ids'       => 'required|array|min:1',
             'course_ids.*'     => 'exists:courses,id',
@@ -190,22 +191,14 @@ class EnrollmentController extends Controller
                 continue;
             }
 
-            // 2. Academic year must match if course is restricted
-            if (!empty($data['academic_year_id']) && $course->academic_year_id
-                && $course->academic_year_id != $data['academic_year_id']) {
-                $skipped++;
-                $skipReasons[] = "Course '{$course->code}': Academic year mismatch";
-                continue;
-            }
-
-            // 3. Semester must match if course is restricted (0 = both)
+            // 2. Semester must match if course is restricted (0 = both)
             if (!empty($data['semester']) && $course->semester > 0 && $course->semester != $data['semester']) {
                 $skipped++;
                 $skipReasons[] = "Course '{$course->code}': Semester mismatch (course is semester {$course->semester}, selected {$data['semester']})";
                 continue;
             }
 
-            // 4. Major validation
+            // 3. Major validation
             if ($course->major_id) {
                 if ($yearLevel->level === 1) {
                     // Year 1: only CST courses are allowed.
@@ -279,7 +272,7 @@ class EnrollmentController extends Controller
                 Enrollment::create([
                     'course_id'     => $courseId,
                     'student_id'    => $studentId,
-                    'year'          => $yearLevel->level,
+                    'year'          => $data['academic_year_id'],
                     'year_level_id' => $data['year_level_id'],
                     'major_id'      => $course->major_id ?? $data['major_id'],
                     'enrolled_at'   => now(),

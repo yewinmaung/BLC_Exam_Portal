@@ -30,7 +30,69 @@ class ProfileController extends Controller
     {
         $user = auth()->user();
 
-        return view('profile.show', compact('user'));
+        // Build grouped enrollment history for student profile view only.
+        // Admin and teacher profiles do not receive this data.
+        $enrolledCourseGroups = [];
+
+        if ($user->isStudent()) {
+            // Load academic year records ordered oldest → newest
+            $yearRecords = \App\Models\StudentYearRecord::with(['academicYear', 'yearLevel'])
+                ->where('student_id', $user->id)
+                ->orderBy('academic_year_id')
+                ->get();
+
+            // Load all enrollments for this student with course info
+            $enrollments = \App\Models\Enrollment::with(['course', 'yearLevel'])
+                ->where('student_id', $user->id)
+                ->get();
+
+            // For each academic record, find courses whose enrollment
+            // year_level_id matches the record's year_level_id, then split
+            // by course semester for the second-level accordion.
+            foreach ($yearRecords as $record) {
+                $recYlId = (int) $record->year_level_id;
+
+                // Match enrollments by year_level_id (primary) or legacy year int
+                $recCourses = $enrollments->filter(function ($e) use ($record, $recYlId) {
+                    if ($recYlId && (int) $e->year_level_id === $recYlId) {
+                        return true;
+                    }
+                    // Legacy: enrollment.year integer matches record's year level
+                    $recLevel = (int) ($record->yearLevel?->level ?? 0);
+                    return $recLevel && (int) $e->year === $recLevel;
+                })->map(fn ($e) => $e->course)->filter()->unique('id');
+
+                if ($recCourses->isEmpty()) {
+                    // Still render the year group even with no courses
+                    $enrolledCourseGroups[] = [
+                        'record'    => $record,
+                        'semesters' => [],
+                    ];
+                    continue;
+                }
+
+                // Sub-group by course.semester
+                $semGroups = [];
+                foreach ([1, 2, 0] as $sem) {
+                    $courses = $recCourses->filter(fn ($c) => (int) $c->semester === $sem)->values();
+                    if ($courses->isNotEmpty()) {
+                        $semGroups[] = [
+                            'semester' => $sem,
+                            'label'    => $sem === 1 ? 'Semester 1'
+                                        : ($sem === 2 ? 'Semester 2' : 'Both Semesters'),
+                            'courses'  => $courses,
+                        ];
+                    }
+                }
+
+                $enrolledCourseGroups[] = [
+                    'record'    => $record,
+                    'semesters' => $semGroups,
+                ];
+            }
+        }
+
+        return view('profile.show', compact('user', 'enrolledCourseGroups'));
     }
 
     // ── Photo upload ──────────────────────────────────────────────────────

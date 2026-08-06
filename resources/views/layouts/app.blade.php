@@ -143,8 +143,8 @@
         <div class="blc-brand">
             <img src="{{ asset('images/logo.png') }}" alt="Believe Learning Center">
             <div class="title">
-                <strong>Believe Exam</strong>
-                <small>Learning Center</small>
+                <strong>Believe Learning Center</strong>
+                <small>Exam Management System</small>
             </div>
         </div>
 

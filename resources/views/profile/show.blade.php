@@ -163,8 +163,9 @@
 
 @section('content')
 <div class="profile-page">
-
-    {{-- ── Read-only info card ── --}}
+   <div class="row w-100">
+    <div class="col-5">   
+        {{-- ── Read-only info card ── --}}
     <div class="avatar-card">
         <div class="avatar-wrap" id="avatarWrap">
             <div class="avatar-ring" id="avatarRing">
@@ -187,9 +188,9 @@
         <input type="file" id="photoFileInput" accept="image/jpeg,image/jpg,image/png,image/webp" style="display:none">
 
         <div id="photoStatus" class="mt-3" style="min-height:28px"></div>
-    </div>
-
-    {{-- ── Password change card ── --}}
+    </div></div>
+    <div class="col-7">
+         {{-- ── Password change card ── --}}
     <div class="section-card">
         <div class="section-card-header">
             <i class="bi bi-shield-lock-fill"></i> Change Password
@@ -240,8 +241,159 @@
 
         </div>
     </div>
+    </div>
+   </div>
+ 
 
-</div><!-- /.profile-page -->
+   
+
+    {{-- ── Enrolled Courses accordion (students only) ── --}}
+    @if($user->isStudent() && !empty($enrolledCourseGroups))
+    <div class="section-card">
+        <div class="section-card-header">
+            <i class="bi bi-book-fill"></i> Enrolled Courses
+        </div>
+        <div class="section-card-body p-0">
+
+            @if(collect($enrolledCourseGroups)->every(fn($g) => empty($g['semesters'])))
+                <div class="text-center py-4 text-muted small">No enrollment records found.</div>
+            @else
+
+            {{-- Outer accordion: one item per academic year ──────────── --}}
+            <div class="accordion accordion-flush" id="ayAccordion">
+            @foreach($enrolledCourseGroups as $gi => $group)
+            @php
+                $record  = $group['record'];
+                $ayName  = $record->academicYear->name ?? '—';
+                $ylName  = $record->yearLevel->name    ?? '—';
+                $ayColId = 'ay-col-'.$record->id;
+                $totalCourses = collect($group['semesters'])->sum(fn($s) => count($s['courses']));
+            @endphp
+
+            <div class="accordion-item" style="border-left:none;border-right:none;
+                {{ $gi === 0 ? 'border-top:none' : '' }}">
+
+                {{-- Academic Year header ──────────────────────────── --}}
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed"
+                            type="button"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#{{ $ayColId }}"
+                            aria-expanded="false"
+                            style="font-weight:700;font-size:0.88rem;background:#f8faff;
+                                   color:var(--blc-navy,#0b2a5b);padding:0.85rem 1.25rem">
+                        <i class="bi bi-calendar3-week me-2" style="color:var(--blc-royal,#2d27a0)"></i>
+                        <span>{{ $ayName }}</span>
+                        <span class="badge ms-2"
+                              style="background:#ede9fe;color:#3730a3;font-size:0.72rem;font-weight:600">
+                            {{ $ylName }}
+                        </span>
+                        <span class="badge ms-2 bg-secondary bg-opacity-10 text-secondary"
+                              style="font-size:0.7rem">
+                            {{ $totalCourses }} course{{ $totalCourses !== 1 ? 's' : '' }}
+                        </span>
+                    </button>
+                </h2>
+
+                {{-- Academic Year body ──────────────────────────────── --}}
+                <div id="{{ $ayColId }}" class="accordion-collapse collapse"
+                     data-bs-parent="#ayAccordion">
+                    <div class="accordion-body p-0">
+
+                    @if(empty($group['semesters']))
+                        <div class="text-center py-3 text-muted small px-3">
+                            No courses found for this academic year.
+                        </div>
+                    @else
+
+                        {{-- Inner accordion: one item per semester ──── --}}
+                        <div class="accordion accordion-flush"
+                             id="semAccordion-{{ $record->id }}">
+                        @foreach($group['semesters'] as $si => $semGroup)
+                        @php
+                            $semColId = 'sem-col-'.$record->id.'-'.$si;
+                            $semColor = $semGroup['semester'] === 1 ? '#3730a3' : ($semGroup['semester'] === 2 ? '#92400e' : '#374151');
+                            $semBg    = $semGroup['semester'] === 1 ? '#ede9fe' : ($semGroup['semester'] === 2 ? '#fef3c7' : '#f0f4ff');
+                        @endphp
+
+                        <div class="accordion-item" style="border-left:none;border-right:none">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed"
+                                        type="button"
+                                        data-bs-toggle="collapse"
+                                        data-bs-target="#{{ $semColId }}"
+                                        aria-expanded="false"
+                                        style="font-size:0.83rem;font-weight:600;
+                                               padding:0.7rem 1.5rem;background:#fff">
+                                    <span class="badge me-2"
+                                          style="background:{{ $semBg }};color:{{ $semColor }};font-size:0.75rem;padding:4px 9px">
+                                        <i class="bi bi-bookmark-fill me-1"></i>{{ $semGroup['label'] }}
+                                    </span>
+                                    <span class="text-muted" style="font-size:0.75rem">
+                                        {{ count($semGroup['courses']) }} course{{ count($semGroup['courses']) !== 1 ? 's' : '' }}
+                                    </span>
+                                </button>
+                            </h2>
+
+                            <div id="{{ $semColId }}" class="accordion-collapse collapse"
+                                 data-bs-parent="#semAccordion-{{ $record->id }}">
+                                <div class="accordion-body p-0">
+                                    <div class="table-responsive">
+                                        <table class="table table-sm mb-0"
+                                               style="font-size:0.82rem">
+                                            <thead style="background:#f8faff">
+                                                <tr>
+                                                    <th class="ps-4" style="font-weight:700;color:#374151">
+                                                        Course Name
+                                                    </th>
+                                                    <th style="font-weight:700;color:#374151">Code</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                            @foreach($semGroup['courses'] as $course)
+                                            <tr>
+                                                <td class="ps-4" style="font-weight:600;color:#1e293b">
+                                                    <i class="bi bi-book me-1"
+                                                       style="color:var(--blc-royal,#2d27a0);font-size:0.75rem"></i>
+                                                    {{ $course->title }}
+                                                </td>
+                                                <td>
+                                                    @if($course->code)
+                                                    <span class="badge"
+                                                          style="background:#f0f4ff;color:#3730a3;
+                                                                 font-size:0.72rem;font-weight:600">
+                                                        {{ $course->code }}
+                                                    </span>
+                                                    @else
+                                                    <span class="text-muted">—</span>
+                                                    @endif
+                                                </td>
+                                            </tr>
+                                            @endforeach
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>{{-- /semester item --}}
+                        @endforeach
+                        </div>{{-- /inner accordion --}}
+
+                    @endif
+
+                    </div>
+                </div>
+            </div>{{-- /academic year item --}}
+            @endforeach
+            </div>{{-- /outer accordion --}}
+
+            @endif
+        </div>
+    </div>
+    @endif
+
+</div>
+<!-- /.profile-page -->
 
 {{-- ── Photo Cropper Modal ── --}}
 <div class="cropper-modal-overlay" id="cropperOverlay">

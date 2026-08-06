@@ -25,8 +25,14 @@
                         <select name="course_id" class="form-select" required>
                             <option value="">— Select a course —</option>
                             @foreach($courses as $c)
+                            @php
+                                $ylLabel  = \App\Models\Course::$yearLevelLabels[$c->year_level] ?? ('Year '.$c->year_level);
+                                $semLabel = $c->semester > 0 ? 'Sem '.$c->semester : 'Both Sems';
+                            @endphp
                             <option value="{{ $c->id }}" {{ old('course_id') == $c->id ? 'selected' : '' }}>
                                 {{ $c->title }}
+                                @if($c->code) ({{ $c->code }}) @endif
+                                — {{ $ylLabel }}, {{ $semLabel }}
                             </option>
                             @endforeach
                         </select>

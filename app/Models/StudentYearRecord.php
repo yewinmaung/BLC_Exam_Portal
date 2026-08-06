@@ -9,7 +9,7 @@ class StudentYearRecord extends Model
 {
     protected $fillable = [
         'student_id', 'academic_year_id', 'year_level_id',
-        'semester', 'department', 'major', 'gpa', 'status', 'promoted_at',
+        'semester', 'department', 'major', 'gpa', 'status', 'promoted_at', 'record_type', 'remark',
     ];
     protected $casts = ['promoted_at' => 'datetime', 'gpa' => 'decimal:2'];
 

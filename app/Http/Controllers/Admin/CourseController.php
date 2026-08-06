@@ -171,9 +171,6 @@ class CourseController extends Controller
             ->when($yearLevel > 0, fn ($q) => $q->where(function ($q) use ($yearLevel) {
                 $q->where('year_level', $yearLevel)->orWhere('year_level', 0);
             }))
-            ->when($academicYearId > 0, fn ($q) => $q->where(function ($q) use ($academicYearId) {
-                $q->where('academic_year_id', $academicYearId)->orWhereNull('academic_year_id');
-            }))
             ->when($semester > 0, fn ($q) => $q->where(function ($q) use ($semester) {
                 $q->where('semester', $semester)->orWhere('semester', 0);
             }))

@@ -11,247 +11,429 @@
 
 @section('content')
 
-{{-- Summary stats (current / selected academic year) --}}
+{{-- ══ Summary stats ════════════════════════════════════════════════════ --}}
 <div class="row g-3 mb-4">
-    @foreach([
-        ['label'=>'Exams Taken', 'value'=>$totalExams,      'icon'=>'bi-pencil-square',   'color'=>'var(--royal,#3730a3)'],
-        ['label'=>'Passed',      'value'=>$passedCount,      'icon'=>'bi-check-circle',    'color'=>'#22c55e'],
-        ['label'=>'Average',     'value'=>$avgPct.'%',       'icon'=>'bi-bar-chart',       'color'=>'#f59e0b'],
-    ] as $s)
-    <div class="col-sm-4">
-        <div class="card h-100">
-            <div class="card-body d-flex align-items-center gap-3">
-                <div style="width:40px;height:40px;border-radius:10px;background:{{ $s['color'] }}1a;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-                    <i class="bi {{ $s['icon'] }}" style="font-size:1.1rem;color:{{ $s['color'] }}"></i>
-                </div>
-                <div>
-                    <div style="font-size:1.3rem;font-weight:800;color:var(--text-1)">{{ $s['value'] }}</div>
-                    <div style="font-size:0.72rem;color:#6b7280">{{ $s['label'] }}</div>
-                </div>
+    <div class="col-4">
+        <div class="card text-center py-3">
+            <div class="mb-1">
+                <i class="bi bi-journal-check" style="font-size:1.5rem;color:var(--blc-navy,#0b2a5b)"></i>
             </div>
+            <div style="font-size:1.6rem;font-weight:800;color:var(--blc-navy,#0b2a5b)">{{ $totalExams }}</div>
+            <div class="text-muted small">Total Exams</div>
         </div>
     </div>
-    @endforeach
-</div>
-
-{{-- Filters --}}
-<div class="card mb-3">
-    <div class="card-body py-2">
-        <form method="GET" class="d-flex flex-wrap gap-2 align-items-end">
-            <div style="min-width:180px;flex:1">
-                <label class="form-label mb-1" style="font-size:0.75rem;font-weight:600">Academic Year</label>
-                <select name="academic_year_id" class="form-select form-select-sm">
-                    @foreach($academicYears as $ay)
-                    <option value="{{ $ay->id }}" {{ (int) $selectedYearId === (int) $ay->id ? 'selected' : '' }}>
-                        {{ $ay->name }}{{ $ay->is_current ? ' (Current)' : '' }}
-                    </option>
-                    @endforeach
-                </select>
+    <div class="col-4">
+        <div class="card text-center py-3">
+            <div class="mb-1">
+                <i class="bi bi-patch-check-fill" style="font-size:1.5rem;color:#166534"></i>
             </div>
-            <div style="min-width:110px">
-                <label class="form-label mb-1" style="font-size:0.75rem;font-weight:600">Semester</label>
-                <select name="semester" class="form-select form-select-sm">
-                    <option value="" {{ $selectedSemester === null ? 'selected' : '' }}>Sem 1 &amp; Sem 2</option>
-                    <option value="1" {{ $selectedSemester === 1 ? 'selected' : '' }}>Semester 1</option>
-                    <option value="2" {{ $selectedSemester === 2 ? 'selected' : '' }}>Semester 2</option>
-                </select>
+            <div style="font-size:1.6rem;font-weight:800;color:#166534">{{ $passedCount }}</div>
+            <div class="text-muted small">Passed</div>
+        </div>
+    </div>
+    <div class="col-4">
+        <div class="card text-center py-3">
+            <div class="mb-1">
+                <i class="bi bi-bar-chart-fill" style="font-size:1.5rem;color:var(--blc-navy,#0b2a5b)"></i>
             </div>
-            <div class="d-flex gap-1">
-                <button class="btn btn-primary btn-sm"><i class="bi bi-funnel me-1"></i>Filter</button>
-                <a href="{{ route('student.results.index') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-x"></i></a>
-            </div>
-        </form>
+            <div style="font-size:1.6rem;font-weight:800;color:var(--blc-navy,#0b2a5b)">{{ $avgPct }}%</div>
+            <div class="text-muted small">Avg Score</div>
+        </div>
     </div>
 </div>
 
-{{-- Current / selected year results: Sem 1 + Sem 2 --}}
+{{-- ══ Empty state ══════════════════════════════════════════════════════ --}}
+@if(empty($grouped))
 <div class="card">
-    <div class="card-header d-flex flex-wrap align-items-center gap-2">
-        <span><i class="bi bi-list-check me-2"></i>My Exam Results</span>
-        @if($selectedYear)
-        <span class="badge ms-auto" style="background:var(--royal,#3730a3);color:#fff;font-weight:600">
-            {{ $selectedYear->name }}
-            @if($selectedYear->is_current) · Current @endif
-        </span>
-        @endif
-    </div>
-    <div class="card-body p-0">
-        @if(!$selectedYear)
-        <div class="text-center py-5 text-muted">
-            <i class="bi bi-calendar-x d-block mb-2" style="font-size:2rem;opacity:0.3"></i>
-            <div class="small">No academic year is set as current. Ask your admin to mark the current year.</div>
-        </div>
-        @else
-            @if($selectedSemester === null || $selectedSemester === 1)
-            <div class="semester-block {{ ($selectedSemester === null) ? 'border-bottom' : '' }}">
-                <div class="semester-header">
-                    <i class="bi bi-1-circle-fill me-2" style="color:var(--royal,#3730a3)"></i>
-                    <strong>Semester 1</strong>
-                    <span class="badge bg-light text-dark ms-2">{{ $sem1Results->count() }} exam{{ $sem1Results->count() !== 1 ? 's' : '' }}</span>
-                </div>
-                @include('student.results._results_table', ['rows' => $sem1Results, 'prefix' => 'sem1'])
-            </div>
-            @endif
-
-            @if($selectedSemester === null || $selectedSemester === 2)
-            <div class="semester-block">
-                <div class="semester-header">
-                    <i class="bi bi-2-circle-fill me-2" style="color:var(--royal,#3730a3)"></i>
-                    <strong>Semester 2</strong>
-                    <span class="badge bg-light text-dark ms-2">{{ $sem2Results->count() }} exam{{ $sem2Results->count() !== 1 ? 's' : '' }}</span>
-                </div>
-                @include('student.results._results_table', ['rows' => $sem2Results, 'prefix' => 'sem2'])
-            </div>
-            @endif
-        @endif
+    <div class="card-body text-center py-5 text-muted">
+        <i class="bi bi-bar-chart-line d-block mb-3" style="font-size:3rem;opacity:0.3"></i>
+        <h6>No academic records found</h6>
+        <p class="small mb-0">Your published exam results will appear here once they are released.</p>
     </div>
 </div>
+@else
 
-{{-- Academic history (past years only) --}}
-@if(count($history) > 0)
-<div class="card mt-3">
-    <div class="card-header"><i class="bi bi-calendar3 me-2"></i>Academic Year History</div>
-    <div class="card-body p-0">
-        @foreach($history as $hi => $h)
-        <div class="p-3 {{ !$loop->last ? 'border-bottom' : '' }}">
-            <div class="d-flex align-items-center gap-2 mb-2">
-                <span class="badge" style="background:var(--royal,#3730a3);color:#fff">{{ $h['record']->academicYear->name ?? '—' }}</span>
-                <span class="badge bg-secondary">{{ $h['record']->yearLevel->name ?? '—' }}</span>
-                <span class="badge bg-light text-dark">Sem {{ $h['record']->semester }}</span>
+{{-- ══ Per-academic-year groups ════════════════════════════════════════ --}}
+@foreach($grouped as $group)
+@php
+    $record  = $group['record'];
+    $sem1    = $group['sem1'];   // Collection<Result>
+    $sem2    = $group['sem2'];   // Collection<Result>
+    $hasSem1 = $sem1->isNotEmpty();
+    $hasSem2 = $sem2->isNotEmpty();
+    $ayName  = $record->academicYear->name ?? '—';
+    $ylName  = $record->yearLevel->name    ?? '—';
+    $ayKey   = 'ay-'.$record->id;
+
+    // Sub-group each semester's results by course
+    $groupByCourse = function (\Illuminate\Support\Collection $results) {
+        return $results
+            ->groupBy(fn ($r) => $r->exam?->course_id ?? 0)
+            ->map(fn ($courseResults) => [
+                'course'  => $courseResults->first()?->exam?->course,
+                'results' => $courseResults->values(),
+            ])
+            ->values();
+    };
+
+    $sem1Courses = $groupByCourse($sem1);
+    $sem2Courses = $groupByCourse($sem2);
+@endphp
+
+{{-- Always render the academic year card, even if empty --}}
+<div class="card mb-3" style="border:none;box-shadow:0 2px 12px rgba(11,42,91,0.10);border-radius:12px;overflow:hidden">
+
+    {{-- ── Academic Year + Year Level header ───────────────────────── --}}
+    <div class="d-flex align-items-center gap-2 px-4 py-3"
+         style="background:linear-gradient(90deg,#0b2a5b 0%,#1e3a8a 100%);color:#fff;cursor:pointer;user-select:none"
+         data-bs-toggle="collapse"
+         data-bs-target="#{{ $ayKey }}"
+         aria-expanded="true"
+         aria-controls="{{ $ayKey }}">
+        <i class="bi bi-calendar3-week" style="font-size:1rem;opacity:0.85"></i>
+        <span style="font-weight:800;font-size:1rem;letter-spacing:0.01em">{{ $ayName }}</span>
+        <span class="badge ms-1"
+              style="background:rgba(255,255,255,0.18);color:#fff;font-size:0.75rem;font-weight:600;padding:3px 9px;border-radius:6px">
+            {{ $ylName }}
+        </span>
+        <i class="bi bi-chevron-down ms-auto ay-chevron"
+           style="font-size:0.9rem;transition:transform 0.25s"></i>
+    </div>
+
+    {{-- ── Year body — collapses ────────────────────────────────────── --}}
+    <div id="{{ $ayKey }}" class="collapse show">
+        <div class="px-3 pb-3 pt-2" style="background:#fafbff">
+
+        {{-- ── Semester 1 ──────────────────────────────────────────── --}}
+        @if($hasSem1)
+        @php $s1Key = $ayKey.'-sem1'; @endphp
+        <div class="mb-3">
+
+            {{-- Semester 1 label (clickable) --}}
+            <div class="d-flex align-items-center gap-2 px-2 py-2 mb-2 rounded"
+                 style="background:#ede9fe;cursor:pointer;user-select:none"
+                 data-bs-toggle="collapse"
+                 data-bs-target="#{{ $s1Key }}"
+                 aria-expanded="true">
+                <i class="bi bi-bookmark-fill" style="color:#3730a3;font-size:0.85rem"></i>
+                <span style="font-weight:700;color:#3730a3;font-size:0.9rem">Semester 1</span>
+                <span class="ms-auto text-muted small">
+                    {{ $sem1->count() }} exam{{ $sem1->count() !== 1 ? 's' : '' }}
+                </span>
+                <i class="bi bi-chevron-down sem-chevron"
+                   style="font-size:0.8rem;color:#6b7280;transition:transform 0.2s"></i>
             </div>
-            @if($h['results']->count())
-            <div class="table-responsive">
-                <table class="table table-sm mb-0" style="font-size:0.79rem">
-                    <thead>
-                        <tr>
-                            <th style="width:28px"></th>
-                            <th>Exam</th>
-                            <th>Score</th>
-                            <th>%</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach($h['results'] as $er)
-                        @php $histCollapseId = 'hist-review-'.$hi.'-'.$er->id; @endphp
-                        <tr class="result-row" data-bs-toggle="collapse" data-bs-target="#{{ $histCollapseId }}"
-                            aria-expanded="false" aria-controls="{{ $histCollapseId }}"
-                            style="cursor:pointer">
-                            <td class="text-center">
-                                <i class="bi bi-chevron-down result-expand-icon text-muted"></i>
-                            </td>
-                            <td>{{ $er->exam->title ?? '—' }}</td>
-                            <td>{{ $er->obtained_marks }}/{{ $er->total_marks }}</td>
-                            <td>{{ $er->percentage }}%</td>
-                            <td>
-                                @if($er->isDisqualified())
-                                    <span class="badge bg-warning text-dark" style="font-size:0.65rem">Failed (Cheating)</span>
-                                @elseif($er->is_passed)
-                                    <span class="badge bg-success" style="font-size:0.65rem">Passed</span>
-                                @else
-                                    <span class="badge bg-danger" style="font-size:0.65rem">Failed</span>
-                                @endif
-                            </td>
-                        </tr>
-                        <tr class="result-detail-row">
-                            <td colspan="5" class="p-0 border-0">
-                                <div id="{{ $histCollapseId }}" class="collapse">
-                                    <div class="result-review-panel">
-                                        <div class="d-flex align-items-center gap-2 mb-3">
-                                            <i class="bi bi-eye-fill" style="color:var(--blc-gold,#d4a51c)"></i>
-                                            <span style="font-weight:700;color:var(--blc-navy,#0b2a5b)">Answer Review</span>
-                                        </div>
-                                        @include('student.results._answer_review', ['result' => $er])
+
+            <div id="{{ $s1Key }}" class="collapse show">
+            @foreach($sem1Courses as $cg)
+            @php
+                $course   = $cg['course'];
+                $cResults = $cg['results'];
+                $courseKey = $ayKey.'-s1-c'.($course?->id ?? 0);
+            @endphp
+
+                {{-- Course card --}}
+                <div class="mb-2 ms-2"
+                     style="border:1.5px solid #e2e8f0;border-radius:9px;overflow:hidden;background:#fff">
+
+                    {{-- Course header (clickable) --}}
+                    <div class="d-flex align-items-center gap-2 px-3 py-2"
+                         style="cursor:pointer;user-select:none;background:#fff"
+                         data-bs-toggle="collapse"
+                         data-bs-target="#{{ $courseKey }}"
+                         aria-expanded="true">
+                        <i class="bi bi-book-fill" style="color:var(--blc-navy,#0b2a5b);font-size:0.85rem"></i>
+                        <span style="font-weight:700;color:var(--blc-navy,#0b2a5b);font-size:0.88rem">
+                            {{ $course?->title ?? '—' }}
+                        </span>
+                        @if($course?->code)
+                        <span class="text-muted small" style="font-size:0.75rem">{{ $course->code }}</span>
+                        @endif
+                        <span class="ms-auto badge"
+                              style="background:#f0f4ff;color:#3730a3;font-size:0.7rem">
+                            {{ $cResults->count() }} exam{{ $cResults->count() !== 1 ? 's' : '' }}
+                        </span>
+                        <i class="bi bi-chevron-down course-chevron"
+                           style="font-size:0.75rem;color:#9ca3af;transition:transform 0.2s;margin-left:4px"></i>
+                    </div>
+
+                    {{-- Exam list --}}
+                    <div id="{{ $courseKey }}" class="collapse show"
+                         style="border-top:1px solid #f0f4ff">
+                        @foreach($cResults as $r)
+                        @php
+                            $collapseId = 'rv-'.$r->id;
+                            $isPassed   = $r->is_passed;
+                            $isDq       = $r->isDisqualified();
+                            $statusColor = $isDq ? '#92400e' : ($isPassed ? '#166534' : '#991b1b');
+                            $statusBg    = $isDq ? '#fef3c7' : ($isPassed ? '#f0fdf4' : '#fef2f2');
+                            $statusText  = $isDq ? 'Disqualified' : ($isPassed ? 'Passed' : 'Failed');
+                            $statusBadge = $isDq ? 'bg-warning text-dark' : ($isPassed ? 'bg-success' : 'bg-danger');
+                        @endphp
+
+                        {{-- Exam row (click to expand answer review) --}}
+                        <div class="px-3 py-2 d-flex align-items-center gap-2 flex-wrap result-exam-row"
+                             style="border-top:1px solid #f5f5f5;cursor:pointer;font-size:0.83rem;
+                                    background:{{ $statusBg }}08"
+                             data-bs-toggle="collapse"
+                             data-bs-target="#{{ $collapseId }}"
+                             aria-expanded="false">
+
+                            <i class="bi bi-chevron-right exam-chevron"
+                               style="font-size:0.75rem;color:#9ca3af;transition:transform 0.2s;flex-shrink:0"></i>
+
+                            {{-- Exam title --}}
+                            <span style="font-weight:600;color:#1e293b;flex:1;min-width:120px">
+                                {{ $r->exam?->title ?? '—' }}
+                            </span>
+
+                            {{-- Score --}}
+                            <span style="color:#374151;font-size:0.8rem;white-space:nowrap">
+                                <span style="font-weight:700">{{ $r->obtained_marks }}</span>
+                                <span class="text-muted">/{{ $r->total_marks }}</span>
+                            </span>
+
+                            {{-- Progress bar + % --}}
+                            <div class="d-flex align-items-center gap-1" style="min-width:80px">
+                                <div style="width:44px;height:4px;background:#e5e7eb;border-radius:2px;overflow:hidden;flex-shrink:0">
+                                    <div style="width:{{ min($r->percentage,100) }}%;height:100%;border-radius:2px;
+                                                background:{{ $isDq ? '#f59e0b' : ($isPassed ? '#22c55e' : '#ef4444') }}">
                                     </div>
                                 </div>
-                            </td>
-                        </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
-            @else
-                <div class="text-muted small py-1">No results archived for this period.</div>
-            @endif
-        </div>
-        @endforeach
-    </div>
-</div>
-@endif
+                                <span style="font-size:0.78rem;font-weight:600;color:{{ $statusColor }}">
+                                    {{ $r->percentage }}%
+                                </span>
+                            </div>
 
+                            {{-- Status badge --}}
+                            <span class="badge {{ $statusBadge }}" style="font-size:0.7rem">
+                                {{ $statusText }}
+                            </span>
+
+                            {{-- Date --}}
+                            <span class="text-muted" style="font-size:0.72rem;white-space:nowrap">
+                                {{ $r->created_at->format('M d, Y') }}
+                            </span>
+                        </div>
+
+                        {{-- Answer review (collapsed) --}}
+                        <div id="{{ $collapseId }}" class="collapse">
+                            <div class="px-4 py-3" style="background:#fafbff;border-top:1px solid #ede9fe">
+                                <div class="d-flex align-items-center gap-2 mb-3">
+                                    <i class="bi bi-eye-fill" style="color:var(--blc-gold,#d4a51c)"></i>
+                                    <span style="font-weight:700;font-size:0.85rem;color:var(--blc-navy,#0b2a5b)">
+                                        Answer Review
+                                    </span>
+                                    <span class="badge ms-auto"
+                                          style="background:#f0fdf4;color:#166534;font-size:0.7rem">
+                                        Question · Your answer · Correct answer
+                                    </span>
+                                </div>
+                                @include('student.results._answer_review', ['result' => $r])
+                            </div>
+                        </div>
+
+                        @endforeach
+                    </div>{{-- /exam list --}}
+
+                </div>{{-- /course card --}}
+            @endforeach
+            </div>{{-- /s1Key collapse --}}
+
+        </div>{{-- /semester 1 block --}}
+        @endif
+
+        {{-- ── Semester 2 ──────────────────────────────────────────── --}}
+        @if($hasSem2)
+        @php $s2Key = $ayKey.'-sem2'; @endphp
+        <div class="mb-1">
+
+            {{-- Semester 2 label (clickable) --}}
+            <div class="d-flex align-items-center gap-2 px-2 py-2 mb-2 rounded"
+                 style="background:#fef3c7;cursor:pointer;user-select:none"
+                 data-bs-toggle="collapse"
+                 data-bs-target="#{{ $s2Key }}"
+                 aria-expanded="true">
+                <i class="bi bi-bookmark-fill" style="color:#92400e;font-size:0.85rem"></i>
+                <span style="font-weight:700;color:#92400e;font-size:0.9rem">Semester 2</span>
+                <span class="ms-auto text-muted small">
+                    {{ $sem2->count() }} exam{{ $sem2->count() !== 1 ? 's' : '' }}
+                </span>
+                <i class="bi bi-chevron-down sem-chevron"
+                   style="font-size:0.8rem;color:#6b7280;transition:transform 0.2s"></i>
+            </div>
+
+            <div id="{{ $s2Key }}" class="collapse show">
+            @foreach($sem2Courses as $cg)
+            @php
+                $course   = $cg['course'];
+                $cResults = $cg['results'];
+                $courseKey = $ayKey.'-s2-c'.($course?->id ?? 0);
+            @endphp
+
+                <div class="mb-2 ms-2"
+                     style="border:1.5px solid #e2e8f0;border-radius:9px;overflow:hidden;background:#fff">
+
+                    <div class="d-flex align-items-center gap-2 px-3 py-2"
+                         style="cursor:pointer;user-select:none;background:#fff"
+                         data-bs-toggle="collapse"
+                         data-bs-target="#{{ $courseKey }}"
+                         aria-expanded="true">
+                        <i class="bi bi-book-fill" style="color:var(--blc-navy,#0b2a5b);font-size:0.85rem"></i>
+                        <span style="font-weight:700;color:var(--blc-navy,#0b2a5b);font-size:0.88rem">
+                            {{ $course?->title ?? '—' }}
+                        </span>
+                        @if($course?->code)
+                        <span class="text-muted small" style="font-size:0.75rem">{{ $course->code }}</span>
+                        @endif
+                        <span class="ms-auto badge"
+                              style="background:#f0f4ff;color:#3730a3;font-size:0.7rem">
+                            {{ $cResults->count() }} exam{{ $cResults->count() !== 1 ? 's' : '' }}
+                        </span>
+                        <i class="bi bi-chevron-down course-chevron"
+                           style="font-size:0.75rem;color:#9ca3af;transition:transform 0.2s;margin-left:4px"></i>
+                    </div>
+
+                    <div id="{{ $courseKey }}" class="collapse show"
+                         style="border-top:1px solid #f0f4ff">
+                        @foreach($cResults as $r)
+                        @php
+                            $collapseId  = 'rv-'.$r->id;
+                            $isPassed    = $r->is_passed;
+                            $isDq        = $r->isDisqualified();
+                            $statusColor = $isDq ? '#92400e' : ($isPassed ? '#166534' : '#991b1b');
+                            $statusBg    = $isDq ? '#fef3c7' : ($isPassed ? '#f0fdf4' : '#fef2f2');
+                            $statusText  = $isDq ? 'Disqualified' : ($isPassed ? 'Passed' : 'Failed');
+                            $statusBadge = $isDq ? 'bg-warning text-dark' : ($isPassed ? 'bg-success' : 'bg-danger');
+                        @endphp
+
+                        <div class="px-3 py-2 d-flex align-items-center gap-2 flex-wrap result-exam-row"
+                             style="border-top:1px solid #f5f5f5;cursor:pointer;font-size:0.83rem;
+                                    background:{{ $statusBg }}08"
+                             data-bs-toggle="collapse"
+                             data-bs-target="#{{ $collapseId }}"
+                             aria-expanded="false">
+                            <i class="bi bi-chevron-right exam-chevron"
+                               style="font-size:0.75rem;color:#9ca3af;transition:transform 0.2s;flex-shrink:0"></i>
+                            <span style="font-weight:600;color:#1e293b;flex:1;min-width:120px">
+                                {{ $r->exam?->title ?? '—' }}
+                            </span>
+                            <span style="color:#374151;font-size:0.8rem;white-space:nowrap">
+                                <span style="font-weight:700">{{ $r->obtained_marks }}</span>
+                                <span class="text-muted">/{{ $r->total_marks }}</span>
+                            </span>
+                            <div class="d-flex align-items-center gap-1" style="min-width:80px">
+                                <div style="width:44px;height:4px;background:#e5e7eb;border-radius:2px;overflow:hidden;flex-shrink:0">
+                                    <div style="width:{{ min($r->percentage,100) }}%;height:100%;border-radius:2px;
+                                                background:{{ $isDq ? '#f59e0b' : ($isPassed ? '#22c55e' : '#ef4444') }}">
+                                    </div>
+                                </div>
+                                <span style="font-size:0.78rem;font-weight:600;color:{{ $statusColor }}">
+                                    {{ $r->percentage }}%
+                                </span>
+                            </div>
+                            <span class="badge {{ $statusBadge }}" style="font-size:0.7rem">
+                                {{ $statusText }}
+                            </span>
+                            <span class="text-muted" style="font-size:0.72rem;white-space:nowrap">
+                                {{ $r->created_at->format('M d, Y') }}
+                            </span>
+                        </div>
+
+                        <div id="{{ $collapseId }}" class="collapse">
+                            <div class="px-4 py-3" style="background:#fafbff;border-top:1px solid #fde68a">
+                                <div class="d-flex align-items-center gap-2 mb-3">
+                                    <i class="bi bi-eye-fill" style="color:var(--blc-gold,#d4a51c)"></i>
+                                    <span style="font-weight:700;font-size:0.85rem;color:var(--blc-navy,#0b2a5b)">
+                                        Answer Review
+                                    </span>
+                                    <span class="badge ms-auto"
+                                          style="background:#f0fdf4;color:#166534;font-size:0.7rem">
+                                        Question · Your answer · Correct answer
+                                    </span>
+                                </div>
+                                @include('student.results._answer_review', ['result' => $r])
+                            </div>
+                        </div>
+
+                        @endforeach
+                    </div>
+
+                </div>{{-- /course card --}}
+            @endforeach
+            </div>{{-- /s2Key collapse --}}
+
+        </div>{{-- /semester 2 block --}}
+        @endif
+
+        {{-- Fallback when this academic year has no published results yet --}}
+        @if(! $hasSem1 && ! $hasSem2)
+        <div class="text-center py-3 text-muted small">
+            <i class="bi bi-hourglass-split me-1"></i>No published results for this period yet.
+        </div>
+        @endif
+
+        </div>{{-- /year body inner --}}
+    </div>{{-- /ayKey collapse --}}
+
+</div>{{-- /year card --}}
+@endforeach
+
+@endif
 @endsection
 
 @push('styles')
 <style>
-.semester-header {
-    padding: 0.75rem 1.1rem;
-    background: #f8faff;
-    border-bottom: 1px solid #e8edf5;
-    font-size: 0.9rem;
-    color: var(--blc-navy, #0b2a5b);
-    display: flex;
-    align-items: center;
-}
-.semester-block + .semester-block .semester-header {
-    border-top: 1px solid #e8edf5;
-}
-
-.result-row:hover { background:#f8faff; }
-.result-row[aria-expanded="true"] { background:#f0f4ff; }
-.result-row[aria-expanded="true"] .result-expand-icon { transform: rotate(180deg); }
-.result-expand-icon { transition: transform 0.2s ease; display:inline-block; }
-
-.result-review-panel {
-    padding: 1rem 1.25rem 1.25rem;
-    background: #fafbfd;
-    border-top: 1px solid #e8edf5;
-    border-bottom: 1px solid #e8edf5;
-}
-
-.review-card {
-    border-radius: 12px;
-    padding: 1rem 1.1rem;
-    margin-bottom: 0.85rem;
-    border: 1.5px solid #e8edf5;
-    background: #fff;
-}
-.review-card:last-child { margin-bottom: 0; }
-.review-correct { background: #f0fdf4; border-color: #bbf7d0; }
-.review-wrong   { background: #fef2f2; border-color: #fecaca; }
-
-.student-answer-pill {
-    display: inline-block;
-    padding: 0.25rem 0.75rem;
-    border-radius: 20px;
-    font-size: 0.82rem;
-    font-weight: 600;
-}
-.student-answer-pill.correct { background: #dcfce7; color: #166534; }
-.student-answer-pill.wrong   { background: #fee2e2; color: #991b1b; }
-
-.q-number {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px;
-    height: 26px;
-    border-radius: 6px;
-    background: var(--blc-navy, #0b2a5b);
-    color: #fff;
-    font-size: 0.72rem;
-    font-weight: 800;
-    flex-shrink: 0;
-}
+.result-exam-row:hover { background: #f8faff !important; }
 </style>
 @endpush
 
 @push('scripts')
 <script>
-document.querySelectorAll('.result-row').forEach(row => {
-    const target = document.querySelector(row.getAttribute('data-bs-target'));
-    if (!target) return;
-    target.addEventListener('show.bs.collapse', () => row.setAttribute('aria-expanded', 'true'));
-    target.addEventListener('hide.bs.collapse', () => row.setAttribute('aria-expanded', 'false'));
-});
+(function () {
+    // ── Chevron rotation for any collapse toggle ────────────────────────
+    // Handles: academic year (.ay-chevron), semester (.sem-chevron),
+    //          course (.course-chevron), exam (.exam-chevron)
+    document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(function (trigger) {
+        var targetSel = trigger.getAttribute('data-bs-target');
+        if (!targetSel) return;
+        var panel = document.querySelector(targetSel);
+        if (!panel) return;
+
+        // Find the chevron icon inside this trigger element
+        var chevron = trigger.querySelector(
+            '.ay-chevron, .sem-chevron, .course-chevron, .bi-chevron-down'
+        );
+
+        panel.addEventListener('hide.bs.collapse', function () {
+            if (chevron) chevron.style.transform = 'rotate(-90deg)';
+        });
+        panel.addEventListener('show.bs.collapse', function () {
+            if (chevron) chevron.style.transform = 'rotate(0deg)';
+        });
+    });
+
+    // ── Exam row chevron (right→down when answer review opens) ─────────
+    document.querySelectorAll('.result-exam-row').forEach(function (row) {
+        var targetSel = row.getAttribute('data-bs-target');
+        if (!targetSel) return;
+        var panel   = document.querySelector(targetSel);
+        var chevron = row.querySelector('.exam-chevron');
+        if (!panel || !chevron) return;
+
+        panel.addEventListener('show.bs.collapse', function () {
+            chevron.style.transform = 'rotate(90deg)';
+        });
+        panel.addEventListener('hide.bs.collapse', function () {
+            chevron.style.transform = 'rotate(0deg)';
+        });
+    });
+
+    // ── Bootstrap tooltips ──────────────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', function () {
+        [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+            .forEach(function (el) { new bootstrap.Tooltip(el); });
+    });
+})();
 </script>
 @endpush

@@ -399,7 +399,7 @@
         <img src="{{ asset('images/logo.png') }}" alt="Believe Learning Center">
         <div class="nav-brand-text">
             <strong>Believe Learning Center</strong>
-            <span>University Management System</span>
+            <span>Exam Management System</span>
         </div>
     </a>
     <a href="{{ route('login') }}" class="nav-signin">
@@ -419,15 +419,16 @@
 
     <div class="hero-eyebrow">
         <i class="bi bi-mortarboard-fill"></i>
-        University Management System
+        Exam Management System
     </div>
 
     <h1>
-        Believe Learning<br>
-        <span class="gold-text">Center</span>
+       <span>
+         Believe Learning Center
+       </span>       
     </h1>
 
-    <p class="hero-subtitle">University Management System</p>
+    <p>Exam Management System</p>
 
     <p class="hero-desc">
         A complete platform for managing students, teachers, courses,

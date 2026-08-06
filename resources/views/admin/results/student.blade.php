@@ -115,10 +115,11 @@
             @if($h['results']->count())
             <div class="table-responsive">
                 <table class="table table-sm mb-0" style="font-size:0.8rem">
-                    <thead><tr><th>Exam</th><th>Score</th><th>%</th><th>Status</th></tr></thead>
+                    <thead><tr><th>Course</th><th>Exam</th><th>Score</th><th>%</th><th>Status</th></tr></thead>
                     <tbody>
                         @foreach($h['results'] as $er)
                         <tr>
+                            <td style="color:#6b7280">{{ $er->exam->course->title ?? '—' }}</td>
                             <td>{{ $er->exam->title ?? '—' }}</td>
                             <td>{{ $er->obtained_marks }}/{{ $er->total_marks }}</td>
                             <td>{{ $er->percentage }}%</td>
