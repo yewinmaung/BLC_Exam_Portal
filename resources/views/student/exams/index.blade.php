@@ -79,6 +79,7 @@
                               id="recovery-badge-{{ $e->id }}"
                               data-recovery-deadline="{{ $recoveryDeadline->timestamp }}"
                               data-exam-id="{{ $e->id }}"
+                              data-attempt-url="{{ route('student.exam.take', $activeAttempt) }}"
                               data-exam-url="{{ route('student.exams.show', $e) }}"
                               style="font-weight:700;color:#d97706">
                             <i class="bi bi-wifi-off me-1"></i>
@@ -127,12 +128,34 @@
                     @elseif($activeAttempt)
                     {{-- Student is currently in_progress --}}
                     @if($activeAttempt->disconnected_at !== null)
+                    @php
+                        $recoveryLimit    = (int) config('exam_security.recovery_time_limit', 600);
+                        $recoveryDeadline = $activeAttempt->disconnected_at->copy()->addSeconds($recoveryLimit);
+                        $inRecoveryWindow = $activeAttempt->canAutoRecover();
+                    @endphp
                     <span id="action-btn-{{ $e->id }}">
+                        @if($inRecoveryWindow)
+                        {{--
+                            Recovery window open — student CAN reconnect.
+                            Clicking goes to take() → handleReconnect() path A →
+                            clears disconnected_at and resumes the exam with frozen timer.
+                        --}}
                         <a href="{{ route('student.exam.take', $activeAttempt) }}"
                            class="btn btn-sm btn-danger"
                            style="border:none;font-weight:700">
                             <i class="bi bi-wifi-off me-1"></i>Reconnect
                         </a>
+                        @else
+                        {{--
+                            Recovery window has expired — clicking goes to take() →
+                            handleReconnect() path B → auto-submits and shows result.
+                        --}}
+                        <a href="{{ route('student.exam.take', $activeAttempt) }}"
+                           class="btn btn-sm btn-outline-secondary"
+                           style="font-weight:600">
+                            <i class="bi bi-hourglass-split me-1"></i>Finalize
+                        </a>
+                        @endif
                     </span>
                     @else
                     <a href="{{ route('student.exam.take', $activeAttempt) }}"
@@ -145,14 +168,32 @@
                     @elseif($finalizedAttempt)
                     {{--
                         Student has a finalized attempt (submitted / terminated / suspicious).
-                        Schedule is still open → result not yet published → "View Result".
+                        Schedule is still open → result not yet published → "Waiting Result".
                         Schedule has ended   → falls into $isEnded branch above → "View".
+                        If attempt_limit > 1 and remaining attempts > 0, also show "Start Again".
                     --}}
-                    <a href="{{ route('student.exams.show', $e) }}"
-                       class="btn btn-sm btn-outline-secondary"
-                       style="font-weight:600">
-                        <i class="bi bi-hourglass-split me-1"></i>Waiting Result
-                    </a>
+                    @php
+                        $attemptLimit      = max(1, (int) ($schedule?->attempt_limit ?? 1));
+                        $usedAttempts      = $usedAttemptCounts[$e->id] ?? 0;
+                        $remainingAttempts = $attemptLimit - $usedAttempts;
+                    @endphp
+                    <div class="d-flex flex-column align-items-end gap-1">
+                        <a href="{{ route('student.exams.show', $e) }}"
+                           class="btn btn-sm btn-outline-secondary"
+                           style="font-weight:600">
+                            <i class="bi bi-hourglass-split me-1"></i>Waiting Result
+                        </a>
+                        @if($remainingAttempts > 0)
+                        <span class="text-muted" style="font-size:0.72rem;white-space:nowrap">
+                            Remaining Attempts: {{ $remainingAttempts }}
+                        </span>
+                        <a href="{{ route('student.exams.show', $e) }}"
+                           class="btn btn-sm btn-primary"
+                           style="font-weight:600">
+                            <i class="bi bi-arrow-repeat me-1"></i>Start Again
+                        </a>
+                        @endif
+                    </div>
 
                     @else
                     {{-- No attempt at all and schedule is open — first time start --}}
@@ -235,8 +276,8 @@
     const swappedRecovery = new Set();
 
     function swapToWaitingResult(badgeEl) {
-        const examId  = badgeEl.dataset.examId;
-        const examUrl = badgeEl.dataset.examUrl;
+        const examId      = badgeEl.dataset.examId;
+        const attemptUrl  = badgeEl.dataset.attemptUrl;
         if (!examId || swappedRecovery.has(examId)) return;
         swappedRecovery.add(examId);
 
@@ -245,13 +286,14 @@
         badgeEl.style.color      = '#6b7280';
         badgeEl.style.fontWeight = '600';
 
-        // ── Replace the Reconnect button with a clickable "View Result" link ──
+        // ── Swap Reconnect button to Finalize ────────────────────────────
+        // take() → handleReconnect() path B → auto-submit + grade
         const btnWrap = document.getElementById('action-btn-' + examId);
-        if (btnWrap && examUrl) {
+        if (btnWrap && attemptUrl) {
             btnWrap.innerHTML =
-                '<a href="' + examUrl + '" class="btn btn-sm btn-outline-secondary" ' +
+                '<a href="' + attemptUrl + '" class="btn btn-sm btn-outline-secondary" ' +
                 'style="font-weight:600">' +
-                '<i class="bi bi-hourglass-split me-1"></i>View Result' +
+                '<i class="bi bi-hourglass-split me-1"></i>Finalize' +
                 '</a>';
         }
     }

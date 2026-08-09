@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\SendExamTimetableNotificationJob;
 use App\Models\AcademicYear;
 use App\Models\EmailLog;
-use App\Models\EmailTemplate;
 use App\Models\Exam;
+use App\Models\ExamSchedule;
+use App\Models\ExamTimetableNotification;
 use App\Models\Major;
-use App\Models\ScheduledEmail;
+use App\Models\StudentYearRecord;
 use App\Models\YearLevel;
 use App\Services\ActivityLogService;
 use App\Services\EmailService;
@@ -34,9 +36,8 @@ class EmailController extends Controller
         ];
 
         $recentLogs = EmailLog::latest()->limit(10)->get();
-        $templates  = EmailTemplate::orderBy('name')->get();
 
-        return view('admin.email.index', compact('stats', 'recentLogs', 'templates'));
+        return view('admin.email.index', compact('stats', 'recentLogs'));
     }
 
     // ── SMTP Settings ────────────────────────────────────────────────
@@ -83,89 +84,6 @@ class EmailController extends Controller
         $this->activityLog->log('smtp_updated', 'Admin updated SMTP settings');
 
         return back()->with('success', 'SMTP settings saved. Config cache cleared.');
-    }
-
-    // ── Email Templates ──────────────────────────────────────────────
-
-    public function templates()
-    {
-        $templates = EmailTemplate::latest()->paginate(20);
-        return view('admin.email.templates.index', compact('templates'));
-    }
-
-    public function createTemplate()
-    {
-        $template = new EmailTemplate();   // empty model so _form ?? fallbacks work
-        return view('admin.email.templates.create', compact('template'));
-    }
-
-    public function storeTemplate(Request $request)
-    {
-        $data = $request->validate([
-            'name'      => 'required|string|max:255',
-            'slug'      => 'required|string|max:100|unique:email_templates,slug|regex:/^[a-z0-9_]+$/',
-            'subject'   => 'required|string|max:255',
-            'body_html' => 'required|string',
-            'body_text' => 'nullable|string',
-            'event'     => 'nullable|string|max:100',
-            'is_active' => 'boolean',
-        ]);
-
-        EmailTemplate::create([...$data, 'created_by' => auth()->id()]);
-        $this->activityLog->log('email_template_created', "Created email template: {$data['name']}");
-
-        return redirect()->route('admin.email.templates')
-            ->with('success', 'Template created.');
-    }
-
-    public function editTemplate(EmailTemplate $template)
-    {
-        return view('admin.email.templates.edit', compact('template'));
-    }
-
-    public function updateTemplate(Request $request, EmailTemplate $template)
-    {
-        $data = $request->validate([
-            'name'      => 'required|string|max:255',
-            'slug'      => 'required|string|max:100|regex:/^[a-z0-9_]+$/|unique:email_templates,slug,' . $template->id,
-            'subject'   => 'required|string|max:255',
-            'body_html' => 'required|string',
-            'body_text' => 'nullable|string',
-            'event'     => 'nullable|string|max:100',
-            'is_active' => 'boolean',
-        ]);
-
-        $template->update($data);
-        $this->activityLog->log('email_template_updated', "Updated email template: {$template->name}");
-
-        return redirect()->route('admin.email.templates')
-            ->with('success', 'Template updated.');
-    }
-
-    public function destroyTemplate(EmailTemplate $template)
-    {
-        $name = $template->name;
-        $template->delete();
-        $this->activityLog->log('email_template_deleted', "Deleted email template: {$name}");
-
-        return back()->with('success', 'Template deleted.');
-    }
-
-    public function previewTemplate(EmailTemplate $template)
-    {
-        $sampleVars = [
-            'student_name'  => 'John Doe',
-            'student_id'    => 'STU-2026-001',
-            'teacher_name'  => 'Prof. Smith',
-            'course_name'   => 'Computer Science 101',
-            'exam_name'     => 'Midterm Exam',
-            'result'        => 'Passed',
-            'gpa'           => '3.75',
-        ];
-
-        $rendered = $template->render($sampleVars);
-
-        return view('admin.email.templates.preview', compact('template', 'rendered'));
     }
 
     // ── Email Logs ───────────────────────────────────────────────────
@@ -500,72 +418,37 @@ HTML;
 
     // ── Compose ──────────────────────────────────────────────────────
 
-    /**
-     * The list of variables that EmailService::resolveUserVars() and the system
-     * provide automatically — these do NOT need a manual input field.
-     */
-    private const AUTO_VARS = [
-        'student_name', 'teacher_name', 'name', 'email', 'student_id',
-        'app_name', 'app_url', 'year',
-        'year_level', 'academic_year', 'department', 'major', 'semester',
-        'course_name', 'courses',
-    ];
-
-    /**
-     * Scan a template's subject + body_html for {{variable}} tokens.
-     * Returns an array of unique variable key names found.
-     */
-    private function extractTemplateVariables(EmailTemplate $template): array
-    {
-        $haystack = $template->subject . ' ' . $template->body_html;
-        preg_match_all('/\{\{\s*(\w+)\s*\}\}/', $haystack, $matches);
-        return array_values(array_unique($matches[1]));
-    }
-
     public function compose()
     {
-        $templates = EmailTemplate::where('is_active', true)->orderBy('name')->get()
-            ->map(function (EmailTemplate $t) {
-                $allVars    = $this->extractTemplateVariables($t);
-                $manualVars = array_values(array_diff($allVars, self::AUTO_VARS));
-                $autoVars   = array_values(array_intersect($allVars, self::AUTO_VARS));
+        $groups = EmailService::recipientLabels();
 
-                // Attach as transient properties — not persisted
-                $t->all_vars    = $allVars;
-                $t->manual_vars = $manualVars; // admin must fill these
-                $t->auto_vars   = $autoVars;   // resolved automatically
+        // ── Timetable notification filter data ────────────────────────────
+        $academicYears = AcademicYear::orderByDesc('start_year')->get();
+        $yearLevels    = YearLevel::orderBy('level')->get();
+        $majors        = Major::where('is_active', true)->orderBy('name')->get();
 
-                return $t;
-            });
-
-        $groups = ScheduledEmail::$recipientLabels;
-
-        return view('admin.email.compose', compact('templates', 'groups'));
+        return view('admin.email.compose', compact('groups', 'academicYears', 'yearLevels', 'majors'));
     }
 
     /**
-     * AJAX endpoint — renders a template with provided vars and returns JSON.
-     * Used by the preview panel. Does NOT send email or create any log.
+     * AJAX endpoint — previews a group or single send.
+     * Substitutes system + user variables into the provided raw subject/body.
+     * Does NOT send email or create any log.
      *
      * POST /admin/email/compose/preview
-     * Body: template_slug, vars{key:value,...}, mode, to_email (optional)
+     * Body: subject, body_html, mode, to_email (optional), recipients (optional)
      * Returns: JSON { subject, body_html, recipient_info }
      */
     public function composePreview(Request $request)
     {
         $request->validate([
-            'template_slug' => ['required', 'string', 'exists:email_templates,slug'],
-            'vars'          => ['nullable', 'array'],
-            'vars.*'        => ['nullable', 'string', 'max:500'],
-            'mode'          => ['required', 'in:single,group'],
-            'to_email'      => ['nullable', 'email'],
-            'recipients'    => ['nullable', 'string'],
+            'subject'    => ['required', 'string', 'max:500'],
+            'body_html'  => ['required', 'string'],
+            'mode'       => ['required', 'in:single,group'],
+            'to_email'   => ['nullable', 'email'],
+            'recipients' => ['nullable', 'string'],
         ]);
 
-        $template = EmailTemplate::where('slug', $request->input('template_slug'))->firstOrFail();
-        $adminVars = $request->input('vars', []);
-
-        // Build variable map: system vars + user vars (sample) + admin-provided vars
         $systemVars = [
             'app_name' => config('app.name'),
             'app_url'  => config('app.url'),
@@ -575,12 +458,10 @@ HTML;
         $userVars = [];
 
         if ($request->input('mode') === 'single' && $request->filled('to_email')) {
-            // Try to resolve a real user for the preview
             $user = \App\Models\User::where('email', $request->input('to_email'))->first();
             if ($user) {
                 $userVars = $this->emailService->resolveUserVars($user);
             } else {
-                // Unknown recipient — use the email address as a placeholder
                 $userVars = [
                     'student_name' => $request->input('to_email'),
                     'teacher_name' => $request->input('to_email'),
@@ -589,29 +470,26 @@ HTML;
                 ];
             }
         } elseif ($request->input('mode') === 'group' && $request->filled('recipients')) {
-            // Use the first resolved recipient as a sample for preview
-            $sampleUsers = $this->emailService->resolveRecipients($request->input('recipients'));
-            $sampleUser  = $sampleUsers->first();
+            $sampleUser = $this->emailService->resolveRecipients($request->input('recipients'))->first();
             if ($sampleUser) {
                 $userVars = $this->emailService->resolveUserVars($sampleUser);
             }
         }
 
-        // Merge order: system < user < admin (admin overrides everything)
-        $mergedVars = array_merge($systemVars, $userVars, $adminVars);
-
-        // Render using the existing EmailTemplate::render() — no changes to that method
-        $rendered = $template->render($mergedVars);
+        $mergedVars  = array_merge($systemVars, $userVars);
+        $subject     = $this->emailService->substituteVars($request->input('subject'), $mergedVars);
+        $bodyHtml    = $this->emailService->substituteVars($request->input('body_html'), $mergedVars);
+        $groups      = EmailService::recipientLabels();
 
         $recipientInfo = match($request->input('mode')) {
             'single' => $request->input('to_email', '(no email entered)'),
-            'group'  => ScheduledEmail::$recipientLabels[$request->input('recipients', '')] ?? $request->input('recipients', ''),
+            'group'  => $groups[$request->input('recipients', '')] ?? $request->input('recipients', ''),
             default  => '',
         };
 
         return response()->json([
-            'subject'        => $rendered['subject'],
-            'body_html'      => $rendered['bodyHtml'],
+            'subject'        => $subject,
+            'body_html'      => $bodyHtml,
             'recipient_info' => $recipientInfo,
             'is_sample'      => $request->input('mode') === 'group',
         ]);
@@ -620,44 +498,32 @@ HTML;
     /**
      * Handle a compose form submission.
      *
-     * The hidden form fields (subject, body_html) already contain the fully-rendered
-     * content from the preview step — variables have been substituted.
-     *
-     * Single send: use the rendered content directly via EmailService::send().
-     * Group send:  re-render the raw template per recipient, merging admin-provided
-     *              vars with each user's auto-resolved vars, so every recipient gets
-     *              a personalised copy that matches what was shown in the preview.
+     * Single send: send the subject/body as-is to the specified address.
+     * Group send:  substitute per-recipient user vars into the raw subject/body
+     *              so each person gets a personalised copy.
      */
     public function sendCompose(Request $request)
     {
         $request->validate([
-            'mode'          => ['required', 'in:single,group'],
-            'to_email'      => ['required_if:mode,single', 'nullable', 'email'],
-            'recipients'    => ['required_if:mode,group', 'nullable', 'string'],
-            'subject'       => ['required', 'string', 'max:500'],
-            'body_html'     => ['required', 'string'],
-            'template_slug' => ['nullable', 'string', 'exists:email_templates,slug'],
-            'vars'          => ['nullable', 'array'],
-            'vars.*'        => ['nullable', 'string', 'max:500'],
+            'mode'       => ['required', 'in:single,group'],
+            'to_email'   => ['required_if:mode,single', 'nullable', 'email'],
+            'recipients' => ['required_if:mode,group', 'nullable', 'string'],
+            'subject'    => ['required', 'string', 'max:500'],
+            'body_html'  => ['required', 'string'],
         ]);
 
-        $adminVars    = $request->input('vars', []);
-        $templateSlug = $request->input('template_slug');
-
         // ── Single recipient ──────────────────────────────────────────────
-        // The hidden fields already hold the rendered subject + body from the
-        // preview step, so send them exactly as-is.
         if ($request->input('mode') === 'single') {
 
             $this->emailService->send(
                 $request->input('to_email'),
                 '',
-                $request->input('subject'),   // rendered by preview
-                $request->input('body_html'), // rendered by preview
+                $request->input('subject'),
+                $request->input('body_html'),
                 'compose',
-                $templateSlug,
+                null,
                 auth()->id(),
-                true,       // queued
+                true,
                 'compose'
             );
 
@@ -671,15 +537,7 @@ HTML;
         }
 
         // ── Group send ────────────────────────────────────────────────────
-        // Re-render the raw template per recipient so each person gets their
-        // own personalised copy (student_name, email, etc. filled from DB).
-        // Admin-provided vars (exam_name, result, …) are merged in for all.
-        if ($templateSlug) {
-            $template = EmailTemplate::where('slug', $templateSlug)->first();
-        } else {
-            $template = null;
-        }
-
+        // Substitute per-recipient vars into the raw subject/body for each user.
         $systemVars = [
             'app_name' => config('app.name'),
             'app_url'  => config('app.url'),
@@ -692,22 +550,11 @@ HTML;
         foreach ($users as $user) {
             if (!$user->email) continue;
 
-            // Per-recipient user vars (name, email, year_level, course_name, …)
-            $userVars = $this->emailService->resolveUserVars($user);
+            $userVars   = $this->emailService->resolveUserVars($user);
+            $mergedVars = array_merge($systemVars, $userVars);
 
-            // Merge order: system < user < admin (admin overrides everything)
-            $mergedVars = array_merge($systemVars, $userVars, $adminVars);
-
-            if ($template) {
-                // Render the template with merged vars for this specific recipient
-                $rendered = $template->render($mergedVars);
-                $subject  = $rendered['subject'];
-                $body     = $rendered['bodyHtml'];
-            } else {
-                // No template — substitute vars into the raw subject/body from the form
-                $subject = $this->emailService->substituteVars($request->input('subject'), $mergedVars);
-                $body    = $this->emailService->substituteVars($request->input('body_html'), $mergedVars);
-            }
+            $subject = $this->emailService->substituteVars($request->input('subject'), $mergedVars);
+            $body    = $this->emailService->substituteVars($request->input('body_html'), $mergedVars);
 
             $this->emailService->send(
                 $user->email,
@@ -715,9 +562,9 @@ HTML;
                 $subject,
                 $body,
                 'compose',
-                $templateSlug,
+                null,
                 $user->id,
-                true,       // queued
+                true,
                 'compose'
             );
             $count++;
@@ -827,134 +674,44 @@ HTML;
     // ── Outbox ───────────────────────────────────────────────────────
 
     /**
-     * Pending emails from two sources:
-     *   1. email_logs where status = 'queued'  (dispatched but worker hasn't processed yet)
-     *   2. scheduled_emails where is_sent = false  (future-dated sends)
+     * Pending emails:
+     *   email_logs where status = 'queued'  (dispatched but worker hasn't processed yet)
      *
      * Does NOT read the jobs table.
      */
     public function outbox()
     {
-        $queued    = EmailLog::where('status', 'queued')->latest()->paginate(20, ['*'], 'queued_page');
-        $scheduled = ScheduledEmail::where('is_sent', false)->orderBy('send_at')->paginate(20, ['*'], 'sched_page');
+        $queued = EmailLog::where('status', 'queued')->latest()->paginate(20);
 
-        return view('admin.email.outbox', compact('queued', 'scheduled'));
+        return view('admin.email.outbox', compact('queued'));
     }
 
     // ── Bulk Email ───────────────────────────────────────────────────
 
     public function bulk()
     {
-        $templates = EmailTemplate::where('is_active', true)->orderBy('name')->get();
-        $groups    = ScheduledEmail::$recipientLabels;
-
-        return view('admin.email.bulk', compact('templates', 'groups'));
+        $groups = EmailService::recipientLabels();
+        return view('admin.email.bulk', compact('groups'));
     }
 
     public function sendBulk(Request $request)
     {
         $data = $request->validate([
-            'recipients'    => 'required|string',
-            'subject'       => 'required|string|max:255',
-            'body_html'     => 'required|string',
-            'template_slug' => 'nullable|string|exists:email_templates,slug',
+            'recipients' => 'required|string',
+            'subject'    => 'required|string|max:255',
+            'body_html'  => 'required|string',
         ]);
-
-        // If a template was chosen, use its RAW subject + body (not rendered).
-        // Per-recipient variable substitution happens inside EmailService::sendBulk()
-        // so each recipient gets their own personalised copy.
-        if (!empty($data['template_slug'])) {
-            $tmpl = EmailTemplate::findBySlug($data['template_slug']);
-            if ($tmpl) {
-                $data['subject']   = $tmpl->subject;
-                $data['body_html'] = $tmpl->body_html;
-            }
-        }
 
         $count = $this->emailService->sendBulk(
             $data['recipients'],
             $data['subject'],
             $data['body_html'],
-            'bulk_send',
-            $data['template_slug'] ?? null
+            'bulk_send'
         );
 
         $this->activityLog->log('bulk_email_sent', "Sent bulk email to {$data['recipients']} ({$count} recipients)");
 
         return back()->with('success', "{$count} email(s) queued for delivery.");
-    }
-
-    // ── Scheduled Email ──────────────────────────────────────────────
-
-    /**
-     * Show the Academic Notification Scheduler page.
-     * Passes all filter data needed to build the checkboxes.
-     */
-    public function scheduled()
-    {
-        $scheduled    = ScheduledEmail::with('creator')->latest()->paginate(20);
-        $academicYears = AcademicYear::orderByDesc('start_year')->get();
-        $yearLevels   = YearLevel::orderBy('level')->get();
-        $majors       = Major::where('is_active', true)->orderBy('name')->get();
-        $exams        = Exam::with('course')
-                            ->whereIn('status', ['published', 'approved'])
-                            ->orderByDesc('created_at')
-                            ->get();
-
-        return view('admin.email.scheduled', compact(
-            'scheduled',
-            'academicYears',
-            'yearLevels',
-            'majors',
-            'exams'
-        ));
-    }
-
-    /**
-     * Store a new academic notification schedule.
-     */
-    public function storeScheduled(Request $request)
-    {
-        $data = $request->validate([
-            'name'                  => 'required|string|max:255',
-            'notification_type'     => 'required|in:exam_time,exam_policy,exam_reminder',
-            'filter_academic_years' => 'nullable|array',
-            'filter_academic_years.*' => 'integer|exists:academic_years,id',
-            'filter_year_levels'    => 'nullable|array',
-            'filter_year_levels.*'  => 'integer|exists:year_levels,id',
-            'filter_majors'         => 'nullable|array',
-            'filter_majors.*'       => 'integer|exists:majors,id',
-            'exam_ids'              => 'nullable|array',
-            'exam_ids.*'            => 'integer|exists:exams,id',
-            'send_at'               => 'required|date|after:now',
-        ]);
-
-        ScheduledEmail::create([
-            'name'                  => $data['name'],
-            'notification_type'     => $data['notification_type'],
-            'filter_academic_years' => $data['filter_academic_years'] ?? [],
-            'filter_year_levels'    => $data['filter_year_levels'] ?? [],
-            'filter_majors'         => $data['filter_majors'] ?? [],
-            'exam_ids'              => $data['exam_ids'] ?? [],
-            'send_at'               => $data['send_at'],
-            'created_by'            => auth()->id(),
-        ]);
-
-        $this->activityLog->log(
-            'scheduled_email_created',
-            "Scheduled academic notification: {$data['name']} ({$data['notification_type']})"
-        );
-
-        return back()->with('success', 'Academic notification scheduled successfully.');
-    }
-
-    public function destroyScheduled(ScheduledEmail $scheduled)
-    {
-        if ($scheduled->is_sent) {
-            return back()->withErrors(['error' => 'Cannot delete an already-sent scheduled email.']);
-        }
-        $scheduled->delete();
-        return back()->with('success', 'Scheduled email cancelled.');
     }
 
     // ── Test Email ───────────────────────────────────────────────────
@@ -1011,6 +768,300 @@ HTML;
         }
 
         file_put_contents($envPath, $envContent);
+    }
+
+    // ── Exam Timetable Notification ───────────────────────────────────────
+
+    /**
+     * AJAX — GET filtered exam schedules for the Timetable Notification panel.
+     *
+     * Finds exam schedules for published/approved exams whose course matches
+     * the selected year_level, semester and (optionally) major.
+     *
+     * Note: academic_year_id is stored on the notification log for record-keeping,
+     * but we do NOT filter courses by academic_year_id here because:
+     *  - Courses are associated to a specific academic year at creation time.
+     *  - Exams / schedules are created against those courses.
+     *  - The admin selects the academic year to define WHICH STUDENTS receive the
+     *    email, not to filter which exams appear.
+     *  - Exams are shown based on year_level + semester + major only.
+     *
+     * GET /admin/email/timetable/schedules
+     */
+    public function timetableSchedules(Request $request)
+    {
+        $request->validate([
+            'academic_year_id' => ['required', 'integer', 'exists:academic_years,id'],
+            'year_level_id'    => ['required', 'integer', 'exists:year_levels,id'],
+            'major_id'         => ['nullable', 'integer', 'exists:majors,id'],
+            'semester'         => ['required', 'integer', 'in:1,2'],
+        ]);
+
+        $yearLevelId = (int) $request->input('year_level_id');
+        $majorId     = $request->filled('major_id') ? (int) $request->input('major_id') : null;
+        $semester    = (int) $request->input('semester');
+
+        // Resolve the integer level value (1–5) for the course query
+        $yearLevel = YearLevel::findOrFail($yearLevelId);
+
+        // ── Build course filter ───────────────────────────────────────────
+        // Match courses by year_level integer and semester.
+        // year_level 0 = "all year levels", semester 0 = "both semesters".
+        // We do NOT filter by academic_year_id — courses live in one AY but
+        // exams for that course are relevant to students regardless of which
+        // AY the admin is targeting for the notification.
+        $courseQuery = \App\Models\Course::query()
+            ->where(function ($q) use ($yearLevel) {
+                $q->where('year_level', $yearLevel->level)
+                  ->orWhere('year_level', 0); // 0 = all years
+            })
+            ->where(function ($q) use ($semester) {
+                $q->where('semester', $semester)
+                  ->orWhere('semester', 0); // 0 = both semesters
+            });
+
+        // Major filter — if a major is selected, include courses for that major
+        // OR courses with no major restriction (null = available to all majors).
+        if ($majorId !== null) {
+            $courseQuery->where(function ($q) use ($majorId) {
+                $q->where('major_id', $majorId)
+                  ->orWhereNull('major_id');
+            });
+        }
+        // If no major selected (year 1), no additional major restriction needed —
+        // year 1 courses typically have a major_id assigned to the shared major,
+        // so we simply rely on year_level=1 filter already applied above.
+
+        $courseIds = $courseQuery->pluck('id');
+
+        if ($courseIds->isEmpty()) {
+            return response()->json(['schedules' => []]);
+        }
+
+        // ── Get published/approved exam schedules for these courses ───────
+        $schedules = ExamSchedule::query()
+            ->whereHas('exam', function ($q) use ($courseIds) {
+                $q->whereIn('course_id', $courseIds)
+                  ->whereIn('status', ['published', 'approved'])
+                  ->whereNull('deleted_at');
+            })
+            ->with(['exam.course'])
+            ->get()
+            ->map(function (ExamSchedule $s) {
+                return [
+                    'id'             => $s->id,
+                    'subject'        => $s->exam->title . ' — ' . ($s->exam->course?->title ?? '—'),
+                    'course'         => $s->exam->course?->title ?? '—',
+                    'exam_title'     => $s->exam->title,
+                    'start_datetime' => $s->starts_at->format('d M Y h:i A'),
+                    'end_datetime'   => $s->ends_at->format('d M Y h:i A'),
+                    'allowed_time'   => $s->duration_minutes,
+                    'attempt_count'  => $s->attempt_limit,
+                ];
+            })
+            ->values();
+
+        return response()->json(['schedules' => $schedules]);
+    }
+
+    /**
+     * AJAX — Preview the Exam Timetable email HTML.
+     *
+     * POST /admin/email/timetable/preview
+     */
+    public function timetablePreview(Request $request)
+    {
+        $request->validate([
+            'academic_year_id'        => ['required', 'integer', 'exists:academic_years,id'],
+            'year_level_id'           => ['required', 'integer', 'exists:year_levels,id'],
+            'major_id'                => ['nullable', 'integer', 'exists:majors,id'],
+            'semester'                => ['required', 'integer', 'in:1,2'],
+            'schedule_ids'            => ['required', 'array', 'min:1'],
+            'schedule_ids.*'          => ['integer', 'exists:exam_schedules,id'],
+            'exam_policy'             => ['nullable', 'string', 'max:5000'],
+            'additional_instructions' => ['nullable', 'string', 'max:5000'],
+        ]);
+
+        $academicYear = AcademicYear::findOrFail($request->input('academic_year_id'));
+        $yearLevel    = YearLevel::findOrFail($request->input('year_level_id'));
+        $major        = $request->filled('major_id') ? Major::find($request->input('major_id')) : null;
+        $semester     = (int) $request->input('semester');
+
+        // Build exam rows for the selected schedule IDs
+        $schedules = ExamSchedule::with(['exam.course'])
+            ->whereIn('id', $request->input('schedule_ids'))
+            ->get();
+
+        $exams = $schedules->values()->map(function (ExamSchedule $s, int $idx) {
+            return [
+                'no'             => $idx + 1,
+                'subject'        => $s->exam->title . ' — ' . ($s->exam->course?->title ?? '—'),
+                'course'         => $s->exam->course?->title ?? '—',
+                'exam_title'     => $s->exam->title,
+                'start_datetime' => $s->starts_at->format('d M Y h:i A'),
+                'end_datetime'   => $s->ends_at->format('d M Y h:i A'),
+                'allowed_time'   => $s->duration_minutes,
+                'attempt_count'  => $s->attempt_limit,
+            ];
+        })->all();
+
+        $html = view('emails.exam-timetable', [
+            'studentName'            => 'Sample Student',
+            'academicYearName'       => $academicYear->name,
+            'yearLevelName'          => $yearLevel->name,
+            'majorName'              => $major?->name,
+            'semesterLabel'          => 'Semester ' . $semester,
+            'exams'                  => $exams,
+            'examPolicy'             => $request->input('exam_policy'),
+            'additionalInstructions' => $request->input('additional_instructions'),
+        ])->render();
+
+        return response()->json(['html' => $html]);
+    }
+
+    /**
+     * Send Exam Timetable Notification emails.
+     *
+     * Resolves students from StudentYearRecord matching the selected academic
+     * group filters, then dispatches one SendExamTimetableNotificationJob per
+     * student via the existing 'emails' queue.
+     *
+     * POST /admin/email/timetable/send
+     */
+    public function sendTimetableNotification(Request $request)
+    {
+        $data = $request->validate([
+            'academic_year_id'        => ['required', 'integer', 'exists:academic_years,id'],
+            'year_level_id'           => ['required', 'integer', 'exists:year_levels,id'],
+            'major_id'                => ['nullable', 'integer', 'exists:majors,id'],
+            'semester'                => ['required', 'integer', 'in:1,2'],
+            'schedule_ids'            => ['required', 'array', 'min:1'],
+            'schedule_ids.*'          => ['integer', 'exists:exam_schedules,id'],
+            'exam_policy'             => ['nullable', 'string', 'max:5000'],
+            'additional_instructions' => ['nullable', 'string', 'max:5000'],
+        ]);
+
+        $academicYear = AcademicYear::findOrFail($data['academic_year_id']);
+        $yearLevel    = YearLevel::findOrFail($data['year_level_id']);
+        $major        = isset($data['major_id']) ? Major::find($data['major_id']) : null;
+        $semester     = (int) $data['semester'];
+        $semesterLabel = 'Semester ' . $semester;
+
+        // ── 1. Resolve recipient students ────────────────────────────────
+        $majorIds = $major ? [$major->id] : [];
+
+        $students = $this->emailService->resolveAcademicRecipients(
+            [$academicYear->id],
+            [$yearLevel->id],
+            $majorIds
+        );
+
+        // Additionally filter by semester (StudentYearRecord stores semester as string)
+        $students = $students->filter(function ($student) use ($semester, $academicYear, $yearLevel, $major) {
+            // Check that the student has an active record for this specific semester
+            return StudentYearRecord::where('student_id', $student->id)
+                ->where('academic_year_id', $academicYear->id)
+                ->where('year_level_id', $yearLevel->id)
+                ->where('semester', (string) $semester)
+                ->where('status', 'active')
+                ->when($major, function ($q) use ($major) {
+                    $q->where('major', $major->name);
+                })
+                ->exists();
+        });
+
+        if ($students->isEmpty()) {
+            return redirect()->route('admin.email.compose')
+                ->withErrors(['error' => 'No active students found for the selected academic group and semester.'])
+                ->withInput();
+        }
+
+        // ── 2. Build exam rows (same for all recipients) ──────────────────
+        $schedules = ExamSchedule::with(['exam.course'])
+            ->whereIn('id', $data['schedule_ids'])
+            ->get();
+
+        $exams = $schedules->values()->map(function (ExamSchedule $s, int $idx) {
+            return [
+                'no'             => $idx + 1,
+                'subject'        => $s->exam->title . ' — ' . ($s->exam->course?->title ?? '—'),
+                'course'         => $s->exam->course?->title ?? '—',
+                'exam_title'     => $s->exam->title,
+                'start_datetime' => $s->starts_at->format('d M Y h:i A'),
+                'end_datetime'   => $s->ends_at->format('d M Y h:i A'),
+                'allowed_time'   => $s->duration_minutes,
+                'attempt_count'  => $s->attempt_limit,
+            ];
+        })->all();
+
+        // ── 3. Create the batch notification log ──────────────────────────
+        $notification = ExamTimetableNotification::create([
+            'sent_by'                 => auth()->id(),
+            'academic_year_id'        => $academicYear->id,
+            'year_level_id'           => $yearLevel->id,
+            'major_id'                => $major?->id,
+            'semester'                => $semester,
+            'exam_schedule_ids'       => array_values($data['schedule_ids']),
+            'exam_policy'             => $data['exam_policy'] ?? null,
+            'additional_instructions' => $data['additional_instructions'] ?? null,
+            'recipient_count'         => $students->count(),
+            'status'                  => 'queued',
+            'sent_at'                 => now(),
+        ]);
+
+        // ── 4. Dispatch one job per student ───────────────────────────────
+        $count = 0;
+        foreach ($students as $student) {
+            if (!$student->email) {
+                continue;
+            }
+
+            SendExamTimetableNotificationJob::dispatch(
+                $student->id,
+                $student->name,
+                $student->email,
+                $academicYear->name,
+                $yearLevel->name,
+                $major?->name,
+                $semesterLabel,
+                $exams,
+                $data['exam_policy'] ?? null,
+                $data['additional_instructions'] ?? null,
+                $notification->id
+            );
+
+            $count++;
+        }
+
+        // Update notification status
+        $notification->update(['status' => 'sent', 'recipient_count' => $count]);
+
+        $this->activityLog->log(
+            'exam_timetable_notification_sent',
+            "Exam Timetable Notification sent to {$count} students — "
+            . "{$academicYear->name} · {$yearLevel->name}"
+            . ($major ? ' · ' . $major->name : '')
+            . " · Semester {$semester}"
+            . " · " . count($data['schedule_ids']) . " exam(s)"
+        );
+
+        return redirect()->route('admin.email.sent')
+            ->with('success', "Exam Timetable Notification queued for {$count} student(s).");
+    }
+
+    /**
+     * Show the Exam Timetable Notification history log.
+     *
+     * GET /admin/email/timetable/logs
+     */
+    public function timetableLogs(Request $request)
+    {
+        $logs = ExamTimetableNotification::with(['sender', 'academicYear', 'yearLevel', 'major'])
+            ->latest()
+            ->paginate(20)
+            ->withQueryString();
+
+        return view('admin.email.timetable-logs', compact('logs'));
     }
 }
 

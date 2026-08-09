@@ -175,6 +175,19 @@ class UserController extends Controller
         return back()->with('success', "{$user->name}'s account has been suspended and they have been notified by email.");
     }
 
+    public function restore(User $user)
+    {
+        if ($user->is_active) {
+            return back()->withErrors(['error' => 'User account is already active.']);
+        }
+
+        $user->update(['is_active' => true]);
+
+        $this->activityLog->log('user_restored', "Reinstated user {$user->email}", $user);
+
+        return back()->with('success', "{$user->name}'s account has been reinstated.");
+    }
+
     public function destroy(User $user)
     {
         if ($user->id === auth()->id()) {

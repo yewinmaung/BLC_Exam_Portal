@@ -4,10 +4,6 @@ namespace App\Services;
 
 use App\Jobs\SendEmailJob;
 use App\Models\EmailLog;
-use App\Models\EmailTemplate;
-use App\Models\Exam;
-use App\Models\ExamSchedule;
-use App\Models\ScheduledEmail;
 use App\Models\User;
 use App\Enums\RoleSlug;
 use App\Models\StudentYearRecord;
@@ -19,29 +15,41 @@ class EmailService
     // ── Public API ────────────────────────────────────────────────────
 
     /**
-     * Send a welcome email to a newly created user via DB template.
-     * If the 'welcome' template is inactive or missing, logs a warning and skips
-     * silently — no Blade fallback, no exception thrown.
+     * Send a welcome email to a newly created user (UserController path).
+     *
+     * Renders emails/welcome-account.blade.php directly — no DB template dependency.
+     * If the user was created with a known password it can be passed; otherwise
+     * an empty string is used and the template should handle it gracefully.
      */
-    public function sendWelcomeEmail(User $user): void
+    public function sendWelcomeEmail(User $user, string $temporaryPassword = ''): void
     {
         try {
-            $vars = $this->resolveUserVars($user);
+            $roleLabel = match (true) {
+                $user->isTeacher() => 'teacher',
+                $user->isStudent() => 'student',
+                default            => 'user',
+            };
 
-            $sent = $this->sendTemplate(
-                'welcome',
-                $user->email,
-                $user->name,
-                $vars,
-                'welcome',
-                $user->id,
-                true,
-                'welcome'
+            $bodyHtml = view('emails.welcome-account', [
+                'userName'          => $user->name,
+                'userEmail'         => $user->email,
+                'userRole'          => $roleLabel,
+                'temporaryPassword' => $temporaryPassword,
+            ])->render();
+
+            $subject = '[' . config('app.name') . '] Welcome — Your Account is Ready';
+
+            $this->send(
+                toEmail:      $user->email,
+                toName:       $user->name,
+                subject:      $subject,
+                bodyHtml:     $bodyHtml,
+                event:        'welcome_account',
+                templateSlug: null,
+                userId:       $user->id,
+                queue:        true,
+                emailType:    'welcome'
             );
-
-            if (!$sent) {
-                logger()->warning("sendWelcomeEmail: 'welcome' template missing or inactive for user #{$user->id}. Email skipped.");
-            }
         } catch (\Throwable $e) {
             logger()->error("Welcome email failed for user #{$user->id}: " . $e->getMessage());
         }
@@ -49,7 +57,7 @@ class EmailService
 
     /**
      * Send an email immediately (or dispatch to queue).
-     * Uses an EmailTemplate slug if provided; otherwise uses raw subject/html.
+     * Creates an EmailLog record and optionally dispatches SendEmailJob.
      */
     public function send(
         string $toEmail,
@@ -85,42 +93,6 @@ class EmailService
         }
 
         return $log;
-    }
-
-    /**
-     * Send via template slug with variable substitution.
-     * Loads the template from the database, renders {{variables}}, creates an
-     * EmailLog record, and dispatches SendEmailJob (or delivers synchronously).
-     */
-    public function sendTemplate(
-        string $templateSlug,
-        string $toEmail,
-        string $toName,
-        array $vars = [],
-        string $event = null,
-        int $userId = null,
-        bool $queue = true,
-        string $emailType = null
-    ): ?EmailLog {
-        $template = EmailTemplate::findBySlug($templateSlug);
-
-        if (!$template) {
-            logger()->warning("EmailService: template '{$templateSlug}' not found or inactive.");
-            return null;
-        }
-
-        $rendered = $template->render($vars);
-
-        // Default email_type to the template slug if none provided
-        $resolvedType = $emailType ?? $templateSlug;
-
-        return $this->send(
-            $toEmail, $toName,
-            $rendered['subject'], $rendered['bodyHtml'],
-            $event ?? $templateSlug, $templateSlug,
-            $userId, $queue,
-            $resolvedType
-        );
     }
 
     /**
@@ -163,8 +135,8 @@ class EmailService
     public function deliver(EmailLog $log): void
     {
         try {
-            $from    = $log->from_email ?: config('mail.from.address', 'noreply@believeexam.com');
-            $fromName = $log->from_name ?: config('mail.from.name', config('app.name'));
+            $from     = $log->from_email ?: config('mail.from.address', 'noreply@believeexam.com');
+            $fromName = $log->from_name  ?: config('mail.from.name', config('app.name'));
 
             Mail::send([], [], function (Message $msg) use ($log, $from, $fromName) {
                 $msg->to($log->to_email, $log->to_name ?? '')
@@ -189,171 +161,11 @@ class EmailService
         SendEmailJob::dispatch($log->id);
     }
 
-    /**
-     * Process all due academic notification scheduled emails.
-     *
-     * For each due ScheduledEmail:
-     *  1. Resolve recipient students dynamically from StudentYearRecord
-     *     using the stored filter arrays (academic_years, year_levels, majors).
-     *  2. Load the selected exams with their latest published schedule.
-     *  3. Render the fixed academic-notification blade template per recipient.
-     *  4. Queue via the existing SendEmailJob / EmailService::send() flow.
-     */
-    public function processScheduled(): int
-    {
-        $due = ScheduledEmail::where('is_sent', false)
-            ->where('send_at', '<=', now())
-            ->get();
-
-        $total = 0;
-
-        foreach ($due as $scheduled) {
-            $count = $this->sendAcademicNotification($scheduled);
-            $scheduled->update(['is_sent' => true, 'sent_at' => now()]);
-            $total += $count;
-        }
-
-        return $total;
-    }
-
-    /**
-     * Send a single academic notification to all matching students.
-     *
-     * Recipients are resolved dynamically from StudentYearRecord — no IDs stored.
-     * Email HTML is rendered from the fixed academic-notification blade template.
-     */
-    public function sendAcademicNotification(ScheduledEmail $scheduled): int
-    {
-        // ── 1. Resolve recipient students ─────────────────────────────────
-        $students = $this->resolveAcademicRecipients(
-            $scheduled->filter_academic_years ?? [],
-            $scheduled->filter_year_levels    ?? [],
-            $scheduled->filter_majors         ?? []
-        );
-
-        if ($students->isEmpty()) {
-            logger()->info("processScheduled #{$scheduled->id}: no matching students found.");
-            return 0;
-        }
-
-        // ── 2. Load exams with schedules ──────────────────────────────────
-        $examIds = $scheduled->exam_ids ?? [];
-        $exams   = empty($examIds)
-            ? collect()
-            : Exam::with(['course', 'activeSchedule'])
-                ->whereIn('id', $examIds)
-                ->get();
-
-        // Build exam data array (static — same for all recipients)
-        $examData = $exams->map(fn (Exam $e) => $this->buildExamData($e))->values()->all();
-
-        // ── 3. Determine subject line by notification type ────────────────
-        $subjectMap = [
-            'exam_time'     => '[' . config('app.name') . '] Exam Schedule Notification',
-            'exam_policy'   => '[' . config('app.name') . '] Exam Policy & Instructions',
-            'exam_reminder' => '[' . config('app.name') . '] Exam Reminder',
-        ];
-        $subject = $subjectMap[$scheduled->notification_type] ?? '[' . config('app.name') . '] Academic Notification';
-
-        // ── 4. Queue one email per student ────────────────────────────────
-        $count = 0;
-
-        foreach ($students as $student) {
-            if (!$student->email) {
-                continue;
-            }
-
-            // Render the fixed blade template per recipient (personalised greeting)
-            $bodyHtml = view('emails.academic-notification', [
-                'notificationType' => $scheduled->notification_type,
-                'studentName'      => $student->name,
-                'exams'            => $examData,
-                'emailSubject'     => $subject,
-            ])->render();
-
-            $this->send(
-                $student->email,
-                $student->name,
-                $subject,
-                $bodyHtml,
-                'academic_notification',
-                null,        // no template_slug — uses blade directly
-                $student->id,
-                true,        // queued via SendEmailJob
-                'schedule'
-            );
-
-            $count++;
-        }
-
-        return $count;
-    }
-
-    /**
-     * Resolve students matching the given academic filter arrays.
-     *
-     * An empty filter array means "no restriction on that dimension".
-     * A student must match ALL provided filters (AND logic across dimensions).
-     */
-    public function resolveAcademicRecipients(
-        array $academicYearIds,
-        array $yearLevelIds,
-        array $majorIds
-    ): \Illuminate\Support\Collection {
-        $query = StudentYearRecord::query()
-            ->where('status', 'active')
-            ->with('student');
-
-        if (!empty($academicYearIds)) {
-            $query->whereIn('academic_year_id', $academicYearIds);
-        }
-
-        if (!empty($yearLevelIds)) {
-            $query->whereIn('year_level_id', $yearLevelIds);
-        }
-
-        // Major filter: StudentYearRecord stores major as a text string, not an FK.
-        // We join via the majors table using the name.
-        if (!empty($majorIds)) {
-            $majorNames = \App\Models\Major::whereIn('id', $majorIds)->pluck('name')->toArray();
-            if (!empty($majorNames)) {
-                $query->whereIn('major', $majorNames);
-            }
-        }
-
-        // Return unique active students (a student may have multiple SYR records)
-        return $query->get()
-            ->pluck('student')
-            ->filter(fn ($u) => $u && $u->is_active && $u->email)
-            ->unique('id')
-            ->values();
-    }
-
-    /**
-     * Build a normalised exam data array for the blade template.
-     */
-    private function buildExamData(Exam $exam): array
-    {
-        $schedule = $exam->activeSchedule ?? $exam->latestSchedule;
-
-        return [
-            'title'         => $exam->title,
-            'course'        => $exam->course?->title ?? '—',
-            'description'   => $exam->description ?? '',
-            'total_marks'   => $exam->total_marks,
-            'passing_marks' => $exam->passing_marks,
-            'date'          => $schedule?->starts_at?->format('d M Y') ?? null,
-            'time'          => $schedule?->starts_at?->format('h:i A') . ($schedule?->ends_at ? ' – ' . $schedule->ends_at->format('h:i A') : '') ?? null,
-            'duration'      => $schedule?->duration_minutes ?? null,
-            'room'          => null, // ExamSchedule has no room column; reserved for future use
-        ];
-    }
-
     // ── SMTP Settings ────────────────────────────────────────────────
 
     /**
      * Apply runtime SMTP settings from admin UI (does NOT persist to .env).
-     * Changes take effect for the current request only; restart required for permanent change.
+     * Changes take effect for the current request only.
      */
     public function applySmtpConfig(array $settings): void
     {
@@ -376,11 +188,10 @@ class EmailService
      */
     public function resolveUserVars(User $user): array
     {
-        // Base vars available for every user
         $vars = [
             'student_name'  => $user->name,
             'teacher_name'  => $user->name,
-            'name'          => $user->name,        // alias
+            'name'          => $user->name,
             'email'         => $user->email,
             'student_id'    => 'STU-' . str_pad($user->id, 4, '0', STR_PAD_LEFT),
             'app_name'      => config('app.name'),
@@ -388,7 +199,6 @@ class EmailService
             'year'          => now()->year,
         ];
 
-        // Student-specific: pull latest active year record for department/major/year-level
         if ($user->isStudent()) {
             $record = StudentYearRecord::with(['yearLevel', 'academicYear'])
                 ->where('student_id', $user->id)
@@ -404,7 +214,6 @@ class EmailService
                 $vars['semester']      = 'Semester ' . ($record->semester ?? '');
             }
 
-            // Enrolled courses (comma-separated for bulk context)
             $courseNames = $user->enrollments()
                 ->with('course')
                 ->get()
@@ -412,8 +221,8 @@ class EmailService
                 ->filter()
                 ->implode(', ');
 
-            $vars['course_name']   = $courseNames ?: '';
-            $vars['courses']       = $courseNames ?: '';
+            $vars['course_name'] = $courseNames ?: '';
+            $vars['courses']     = $courseNames ?: '';
         }
 
         return $vars;
@@ -432,27 +241,85 @@ class EmailService
 
     // ── Recipient Resolution ─────────────────────────────────────────
 
+    /**
+     * Resolve a named recipient group to a collection of active Users.
+     */
     public function resolveRecipients(string $group): \Illuminate\Support\Collection
     {
         return match ($group) {
-            'all_students'  => User::whereHas('role', fn($q) => $q->where('slug', RoleSlug::STUDENT))->where('is_active', true)->get(),
-            'all_teachers'  => User::whereHas('role', fn($q) => $q->where('slug', RoleSlug::TEACHER))->where('is_active', true)->get(),
-            'all_users'     => User::where('is_active', true)->get(),
-            'first_year'    => $this->studentsByLevel(1),
-            'second_year'   => $this->studentsByLevel(2),
-            'third_year'    => $this->studentsByLevel(3),
-            'fourth_year'   => $this->studentsByLevel(4),
-            'final_year'    => $this->studentsByLevel(5),
-            default         => collect(),
+            'all_students' => User::whereHas('role', fn ($q) => $q->where('slug', RoleSlug::STUDENT))->where('is_active', true)->get(),
+            'all_teachers' => User::whereHas('role', fn ($q) => $q->where('slug', RoleSlug::TEACHER))->where('is_active', true)->get(),
+            'all_users'    => User::where('is_active', true)->get(),
+            'first_year'   => $this->studentsByLevel(1),
+            'second_year'  => $this->studentsByLevel(2),
+            'third_year'   => $this->studentsByLevel(3),
+            'fourth_year'  => $this->studentsByLevel(4),
+            'final_year'   => $this->studentsByLevel(5),
+            default        => collect(),
         };
+    }
+
+    /**
+     * Recipient group labels — used by Compose and Bulk send panels.
+     */
+    public static function recipientLabels(): array
+    {
+        return [
+            'all_students' => 'All Students',
+            'first_year'   => 'First Year Students',
+            'second_year'  => 'Second Year Students',
+            'third_year'   => 'Third Year Students',
+            'fourth_year'  => 'Fourth Year Students',
+            'final_year'   => 'Final Year Students',
+            'all_teachers' => 'All Teachers',
+            'all_users'    => 'All Users',
+        ];
     }
 
     private function studentsByLevel(int $level): \Illuminate\Support\Collection
     {
-        $ids = StudentYearRecord::whereHas('yearLevel', fn($q) => $q->where('level', $level))
+        $ids = StudentYearRecord::whereHas('yearLevel', fn ($q) => $q->where('level', $level))
             ->pluck('student_id')
             ->unique();
 
         return User::whereIn('id', $ids)->where('is_active', true)->get();
+    }
+
+    /**
+     * Resolve students matching the given academic filter arrays.
+     * Used by the Exam Timetable Notification feature.
+     *
+     * An empty filter array means "no restriction on that dimension".
+     * A student must match ALL provided filters (AND logic across dimensions).
+     */
+    public function resolveAcademicRecipients(
+        array $academicYearIds,
+        array $yearLevelIds,
+        array $majorIds
+    ): \Illuminate\Support\Collection {
+        $query = StudentYearRecord::query()
+            ->where('status', 'active')
+            ->with('student');
+
+        if (!empty($academicYearIds)) {
+            $query->whereIn('academic_year_id', $academicYearIds);
+        }
+
+        if (!empty($yearLevelIds)) {
+            $query->whereIn('year_level_id', $yearLevelIds);
+        }
+
+        if (!empty($majorIds)) {
+            $majorNames = \App\Models\Major::whereIn('id', $majorIds)->pluck('name')->toArray();
+            if (!empty($majorNames)) {
+                $query->whereIn('major', $majorNames);
+            }
+        }
+
+        return $query->get()
+            ->pluck('student')
+            ->filter(fn ($u) => $u && $u->is_active && $u->email)
+            ->unique('id')
+            ->values();
     }
 }

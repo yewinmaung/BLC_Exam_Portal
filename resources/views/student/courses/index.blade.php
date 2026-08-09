@@ -28,12 +28,53 @@
 </div>
 @endif
 
-<div class="row g-3">
-    @forelse($courses as $e)
+@php
+    $semOrder  = [1, 2, 0];   // Sem 1 first, then Sem 2, then Both
+    $semLabels = [1 => 'Semester 1', 2 => 'Semester 2', 0 => 'Both Semesters'];
+    $semIcons  = [1 => 'bi-1-circle-fill', 2 => 'bi-2-circle-fill', 0 => 'bi-infinity'];
+    $semColors = [1 => '#2d27a0', 2 => '#7c3aed', 0 => '#0369a1'];
+    $semBg     = [1 => '#eef2ff', 2 => '#f5f3ff', 0 => '#e0f2fe'];
+    $totalAll  = $courses->flatten()->count();
+@endphp
+
+@if($totalAll === 0)
+<div class="card">
+    <div class="card-body text-center py-5 text-muted">
+        <i class="bi bi-book d-block mb-3" style="font-size:3rem;opacity:0.3"></i>
+        <h6>No courses enrolled yet</h6>
+        <p class="small mb-0">Ask your admin to enroll you in courses for your year level and major.</p>
+    </div>
+</div>
+@else
+
+@foreach($semOrder as $semKey)
+@if($courses->has($semKey))
+@php
+    $semCourses = $courses->get($semKey);
+    $semCount   = $semCourses->count();
+@endphp
+
+{{-- ── Semester section header ── --}}
+<div class="d-flex align-items-center gap-2 mb-3 {{ !$loop->first ? 'mt-4' : '' }}">
+    <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:{{ $semColors[$semKey] }};color:#fff;flex-shrink:0">
+        <i class="bi {{ $semIcons[$semKey] }}" style="font-size:0.8rem"></i>
+    </span>
+    <h6 class="mb-0 fw-bold" style="color:{{ $semColors[$semKey] }};font-size:0.9rem;letter-spacing:0.02em">
+        {{ $semLabels[$semKey] }}
+    </h6>
+    <span class="badge ms-1" style="background:{{ $semBg[$semKey] }};color:{{ $semColors[$semKey] }};font-size:0.7rem;font-weight:700">
+        {{ $semCount }} course{{ $semCount !== 1 ? 's' : '' }}
+    </span>
+    <div style="flex:1;height:1.5px;background:linear-gradient(to right,{{ $semBg[$semKey] }},transparent);margin-left:4px"></div>
+</div>
+
+{{-- ── Course cards grid ── --}}
+<div class="row g-3 mb-1">
+    @foreach($semCourses as $e)
     <div class="col-md-6 col-xl-4">
-        <div class="card h-100" style="transition:transform 0.18s,box-shadow 0.18s"
-             onmouseover="this.style.transform='translateY(-3px)'"
-             onmouseout="this.style.transform=''">
+        <div class="card h-100" style="transition:transform 0.18s,box-shadow 0.18s;border-top:3px solid {{ $semColors[$semKey] }}20"
+             onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 6px 20px rgba(0,0,0,0.09)'"
+             onmouseout="this.style.transform='';this.style.boxShadow=''">
             <div class="card-body d-flex flex-column">
                 @php $yl = $e->course->year_level ?? 0; @endphp
 
@@ -47,10 +88,13 @@
                     <span class="badge" style="background:#f1f5f9;color:#64748b;font-size:0.7rem">All Years</span>
                     @endif
 
+                    {{-- Sem badge --}}
                     @if($e->course->semester == 1)
-                    <span class="badge" style="background:#fef3c7;color:#92400e;font-size:0.68rem">Sem 1</span>
+                    <span class="badge" style="background:#eef2ff;color:#2d27a0;font-size:0.68rem;font-weight:700">Sem 1</span>
                     @elseif($e->course->semester == 2)
-                    <span class="badge" style="background:#fef3c7;color:#92400e;font-size:0.68rem">Sem 2</span>
+                    <span class="badge" style="background:#f5f3ff;color:#7c3aed;font-size:0.68rem;font-weight:700">Sem 2</span>
+                    @else
+                    <span class="badge" style="background:#e0f2fe;color:#0369a1;font-size:0.68rem;font-weight:700">Both</span>
                     @endif
 
                     @if($e->course->major)
@@ -67,13 +111,9 @@
                 <h6 style="font-weight:700;color:var(--text-1,#111827);margin-bottom:0.25rem">
                     {{ $e->course->title }}
                 </h6>
-                <div class="text-muted small mb-2"><i class="bi bi-tag me-1"></i>{{ $e->course->code }}</div>
-
-                @if($e->course->academicYear)
-                <div class="text-muted" style="font-size:0.72rem;margin-bottom:0.5rem">
-                    <i class="bi bi-calendar2 me-1"></i>{{ $e->course->academicYear->name }}
+                <div class="text-muted small mb-2">
+                    <i class="bi bi-tag me-1"></i>{{ $e->course->code }}
                 </div>
-                @endif
 
                 @if($e->course->teacher)
                 <div class="d-flex align-items-center gap-2 mt-auto pt-2 border-top">
@@ -86,20 +126,11 @@
             </div>
         </div>
     </div>
-    @empty
-    <div class="col-12">
-        <div class="card">
-            <div class="card-body text-center py-5 text-muted">
-                <i class="bi bi-book d-block mb-3" style="font-size:3rem;opacity:0.3"></i>
-                <h6>No courses enrolled yet</h6>
-                <p class="small mb-0">Ask your admin to enroll you in courses for your year level and major.</p>
-            </div>
-        </div>
-    </div>
-    @endforelse
+    @endforeach
 </div>
 
-@if($courses->hasPages())
-<div class="mt-3">{{ $courses->links() }}</div>
+@endif
+@endforeach
+
 @endif
 @endsection

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Teacher;
 
 use App\Http\Controllers\Controller;
+use App\Models\Course;
 use App\Services\ActivityLogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -23,7 +24,7 @@ class ProfileController extends Controller
         }
 
         $teacher->load([
-            'taughtCourses' => fn ($q) => $q->latest(),
+            'taughtCourses' => fn ($q) => $q->with(['academicYear'])->latest(),
             'examsAsTeacher' => fn ($q) => $q->with('course')->latest()->limit(10),
         ]);
 
@@ -34,6 +35,24 @@ class ProfileController extends Controller
         ];
 
         return view('teacher.profile.show', compact('teacher', 'stats'));
+    }
+
+    public function courseDetail(\App\Models\Course $course)
+    {
+        $teacher = auth()->user();
+
+        if (!$teacher->isTeacher()) {
+            abort(403);
+        }
+
+        // Ensure the course belongs to this teacher
+        if ($course->teacher_id !== $teacher->id) {
+            abort(403, 'You are not assigned to this course.');
+        }
+
+        $course->load(['academicYear', 'exams' => fn ($q) => $q->where('teacher_id', $teacher->id)->latest()]);
+
+        return view('teacher.profile.course-detail', compact('course'));
     }
 
     public function edit()

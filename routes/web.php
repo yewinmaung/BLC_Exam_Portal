@@ -67,6 +67,7 @@ Route::middleware(['auth', 'exam.session', 'force.password.change'])->group(func
         Route::get('dashboard', [DashboardController::class, 'admin'])->name('dashboard');
         Route::resource('users', UserController::class)->except(['show']);
         Route::post('users/{user}/terminate', [UserController::class, 'terminate'])->name('users.terminate');
+        Route::post('users/{user}/restore',   [UserController::class, 'restore'])->name('users.restore');
         Route::resource('courses', AdminCourseController::class)->except(['show']);
         Route::get('courses-by-year-level', [AdminCourseController::class, 'byYearLevel'])->name('courses.by-year-level');
         Route::resource('majors', \App\Http\Controllers\Admin\MajorController::class)->except(['show']);
@@ -112,26 +113,18 @@ Route::middleware(['auth', 'exam.session', 'force.password.change'])->group(func
             Route::get('smtp',                                                      [\App\Http\Controllers\Admin\EmailController::class, 'smtpSettings'])->name('smtp');
             Route::post('smtp',                                                     [\App\Http\Controllers\Admin\EmailController::class, 'smtpUpdate'])->name('smtp.update');
 
-            // ── Templates ─────────────────────────────────────────────────
-            Route::get('templates',                                                 [\App\Http\Controllers\Admin\EmailController::class, 'templates'])->name('templates');
-            Route::get('templates/create',                                          [\App\Http\Controllers\Admin\EmailController::class, 'createTemplate'])->name('templates.create');
-            Route::post('templates',                                                [\App\Http\Controllers\Admin\EmailController::class, 'storeTemplate'])->name('templates.store');
-            Route::get('templates/{template}/edit',                                 [\App\Http\Controllers\Admin\EmailController::class, 'editTemplate'])->name('templates.edit');
-            Route::put('templates/{template}',                                      [\App\Http\Controllers\Admin\EmailController::class, 'updateTemplate'])->name('templates.update');
-            Route::delete('templates/{template}',                                   [\App\Http\Controllers\Admin\EmailController::class, 'destroyTemplate'])->name('templates.destroy');
-            Route::get('templates/{template}/preview',                              [\App\Http\Controllers\Admin\EmailController::class, 'previewTemplate'])->name('templates.preview');
-
             // ── Logs ──────────────────────────────────────────────────────
             Route::get('logs',                                                      [\App\Http\Controllers\Admin\EmailController::class, 'logs'])->name('logs');
             Route::get('logs/{log}',                                                [\App\Http\Controllers\Admin\EmailController::class, 'showLog'])->name('logs.show');
             Route::post('logs/{log}/retry',                                         [\App\Http\Controllers\Admin\EmailController::class, 'retryLog'])->name('logs.retry');
 
+            // ── Exam Timetable Notification ────────────────────────────────
+            Route::get('timetable/schedules',                                       [\App\Http\Controllers\Admin\EmailController::class, 'timetableSchedules'])->name('timetable.schedules');
+            Route::post('timetable/preview',                                        [\App\Http\Controllers\Admin\EmailController::class, 'timetablePreview'])->name('timetable.preview');
+            Route::post('timetable/send',                                           [\App\Http\Controllers\Admin\EmailController::class, 'sendTimetableNotification'])->name('timetable.send');
+            Route::get('timetable/logs',                                            [\App\Http\Controllers\Admin\EmailController::class, 'timetableLogs'])->name('timetable.logs');
+
             // ── Legacy hidden routes (kept, removed from nav) ──────────────
-            Route::get('bulk',                                                      [\App\Http\Controllers\Admin\EmailController::class, 'bulk'])->name('bulk');
-            Route::post('bulk',                                                     [\App\Http\Controllers\Admin\EmailController::class, 'sendBulk'])->name('bulk.send');
-            Route::get('scheduled',                                                 [\App\Http\Controllers\Admin\EmailController::class, 'scheduled'])->name('scheduled');
-            Route::post('scheduled',                                                [\App\Http\Controllers\Admin\EmailController::class, 'storeScheduled'])->name('scheduled.store');
-            Route::delete('scheduled/{scheduled}',                                  [\App\Http\Controllers\Admin\EmailController::class, 'destroyScheduled'])->name('scheduled.destroy');
             Route::get('test',                                                      [\App\Http\Controllers\Admin\EmailController::class, 'testEmail'])->name('test');
             Route::post('test',                                                     [\App\Http\Controllers\Admin\EmailController::class, 'sendTestEmail'])->name('test.send');
         });
@@ -171,6 +164,7 @@ Route::middleware(['auth', 'exam.session', 'force.password.change'])->group(func
         Route::get('profile', [TeacherProfileController::class, 'show'])->name('profile.show');
         Route::get('profile/edit', [TeacherProfileController::class, 'edit'])->name('profile.edit');
         Route::put('profile', [TeacherProfileController::class, 'update'])->name('profile.update');
+        Route::get('profile/courses/{course}', [TeacherProfileController::class, 'courseDetail'])->name('profile.course-detail');
         Route::get('exams', [TeacherExamController::class, 'index'])->name('exams.index');
         Route::get('exams/create', [TeacherExamController::class, 'create'])->name('exams.create');
         Route::post('exams', [TeacherExamController::class, 'store'])->name('exams.store');

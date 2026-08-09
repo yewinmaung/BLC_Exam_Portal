@@ -29,29 +29,69 @@ class ExamController extends Controller
 
     public function index()
     {
-        $exams = Exam::with('course')
-            ->where('teacher_id', auth()->id())
+        $teacherId = auth()->id();
+
+        // Load all teacher's exams with their own academic year + course info
+        $exams = Exam::with(['academicYear', 'course'])
+            ->withCount('questions')
+            ->where('teacher_id', $teacherId)
             ->latest()
             ->get();
 
-        // Mark exam notifications as read when teacher opens Exams page
-        \App\Models\UserNotification::markCategoryRead(auth()->id(), 'exam');
+        // ── Build nested hierarchy: [ayId][yearLevel][semester][courseId] ─
+        // Academic year comes from the exam's own academic_year_id, NOT the course.
+        // Year level and semester still come from the course (structural metadata).
+        $grouped = [];
+        foreach ($exams as $exam) {
+            $course = $exam->course;
+            if (! $course) continue;
 
-        return view('teacher.exams.index', compact('exams'));
+            $ayId = $exam->academic_year_id ?? 0;   // exam's own AY
+            $yl   = (int) $course->year_level;      // from course
+            $sem  = (int) $course->semester;        // from course
+
+            $grouped[$ayId][$yl][$sem][$course->id]['course'] = $course;
+            $grouped[$ayId][$yl][$sem][$course->id]['exams'][] = $exam;
+        }
+
+        // Academic year lookup (keyed by id) for the blade
+        $ayIds = collect($exams)->pluck('academic_year_id')->filter()->unique();
+        $ayMap = \App\Models\AcademicYear::whereIn('id', $ayIds)
+            ->orderByDesc('start_year')
+            ->get()
+            ->keyBy('id');
+
+        // Sort academic years descending (most recent first)
+        krsort($grouped);
+
+        // Mark exam notifications as read when teacher opens Exams page
+        \App\Models\UserNotification::markCategoryRead($teacherId, 'exam');
+
+        return view('teacher.exams.index', compact('grouped', 'ayMap', 'exams'));
     }
 
-    public function create()
+    public function create(Request $request)
     {
-        $courses = Course::where('teacher_id', auth()->id())->get();
-        $categories = QuestionCategory::all();
+        $courses       = Course::where('teacher_id', auth()->id())->get();
+        $categories    = QuestionCategory::all();
+        $academicYears = \App\Models\AcademicYear::orderByDesc('start_year')->get();
 
-        return view('teacher.exams.create', compact('courses', 'categories'));
+        // Pre-selected course when coming from course detail page
+        $selectedCourse = null;
+        if ($request->filled('course_id')) {
+            $selectedCourse = Course::where('id', $request->course_id)
+                ->where('teacher_id', auth()->id())
+                ->first();
+        }
+
+        return view('teacher.exams.create', compact('courses', 'categories', 'academicYears', 'selectedCourse'));
     }
 
     public function store(Request $request)
     {
         $data = $request->validate([
             'course_id'          => 'required|exists:courses,id',
+            'academic_year_id'   => 'required|exists:academic_years,id',
             'title'              => 'required|string|max:255',
             'description'        => 'nullable|string',
             'passing_marks'      => 'required|integer|min:0',

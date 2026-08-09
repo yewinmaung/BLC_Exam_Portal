@@ -36,7 +36,12 @@ class CourseController extends Controller
             });
         }
 
-        $courses = $query->latest()->paginate(15);
+        $courses = $query->get()
+            ->sortBy([
+                fn ($e) => $e->course?->semester ?? 0,
+                fn ($e) => $e->course?->title ?? '',
+            ])
+            ->groupBy(fn ($e) => $e->course?->semester ?? 0);
 
         // Mark course notifications as read when student visits My Courses
         \App\Models\UserNotification::markCategoryRead($student->id, 'course');

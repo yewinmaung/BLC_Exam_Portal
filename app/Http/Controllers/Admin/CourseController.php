@@ -23,16 +23,17 @@ class CourseController extends Controller
     public function index(Request $request)
     {
         $search         = $request->string('search')->trim()->limit(100)->value();
-        $yearLevel      = $request->filled('year_level')      ? (int)    $request->year_level      : null;
-        $academicYearId = $request->filled('academic_year_id') ? (int)    $request->academic_year_id : null;
-        $majorId        = $request->filled('major_id')        ? (int)    $request->major_id         : null;
-        $status         = $request->filled('status')          ?          $request->status           : null;
+        $yearLevel      = $request->filled('year_level')       ? (int) $request->year_level       : null;
+        $academicYearId = $request->filled('academic_year_id') ? (int) $request->academic_year_id : null;
+        $majorId        = $request->filled('major_id')         ? (int) $request->major_id         : null;
+        $status         = $request->filled('status')           ?       $request->status           : null;
 
         // Data for filter dropdowns
         $academicYears = AcademicYear::orderByDesc('start_year')->get();
         $majors        = Major::where('is_active', true)->orderBy('name')->get();
         $yearLevels    = Course::$yearLevelLabels;
 
+        // ── Load all matching courses (no pagination — grouped accordion) ─
         $courses = Course::with(['teacher', 'enrollments', 'academicYear', 'major'])
             ->when($search, fn ($q) =>
                 $q->where(fn ($s) =>
@@ -45,16 +46,41 @@ class CourseController extends Controller
             ->when($majorId,            fn ($q) => $q->where('major_id', $majorId))
             ->when($status === 'active',   fn ($q) => $q->where('is_active', true))
             ->when($status === 'inactive', fn ($q) => $q->where('is_active', false))
-            ->latest()
-            ->paginate(15)
-            ->withQueryString();
+            ->orderBy('year_level')
+            ->orderBy('semester')
+            ->orderBy('title')
+            ->get();
+
+        // ── Build grouped hierarchy: [yearLevel][semester][ayId][] ───────
+        // Year Level → Semester → Academic Year → Courses
+        $grouped = [];
+        foreach ($courses as $course) {
+            $yl   = (int) $course->year_level;
+            $sem  = (int) $course->semester;
+            $ayId = (int) ($course->academic_year_id ?? 0);
+            $grouped[$yl][$sem][$ayId][] = $course;
+        }
+
+        // Sort year levels ascending, then semesters ascending
+        ksort($grouped);
+        foreach ($grouped as &$semGroups) {
+            ksort($semGroups);
+            foreach ($semGroups as &$ayGroups) {
+                krsort($ayGroups); // most recent academic year first
+            }
+            unset($ayGroups);
+        }
+        unset($semGroups);
+
+        // Academic year lookup map (keyed by id) for the blade
+        $ayMap = $academicYears->keyBy('id');
 
         // Auto-mark all unread 'course' category notifications as read on page visit
         \App\Models\UserNotification::markCategoryRead(auth()->id(), 'course');
 
         return view('admin.courses.index', compact(
-            'courses', 'search',
-            'academicYears', 'majors', 'yearLevels',
+            'grouped', 'ayMap', 'courses',
+            'search', 'academicYears', 'majors', 'yearLevels',
             'yearLevel', 'academicYearId', 'majorId', 'status'
         ));
     }
@@ -103,15 +129,12 @@ class CourseController extends Controller
 
         $teachers      = User::whereHas('role', fn ($q) => $q->where('slug', RoleSlug::TEACHER))
             ->orderBy('name')->get();
-        $students      = User::whereHas('role', fn ($q) => $q->where('slug', RoleSlug::STUDENT))
-            ->orderBy('name')->get();
-        $enrolledIds   = $course->enrollments()->pluck('student_id');
         $yearLevels    = Course::$yearLevelLabels;
         $academicYears = AcademicYear::orderByDesc('start_year')->get();
         $majors        = Major::where('is_active', true)->orderBy('name')->get();
 
         return view('admin.courses.edit', compact(
-            'course', 'teachers', 'students', 'enrolledIds', 'yearLevels', 'academicYears', 'majors'
+            'course', 'teachers', 'yearLevels', 'academicYears', 'majors'
         ));
     }
 
@@ -129,9 +152,34 @@ class CourseController extends Controller
             'academic_year_id' => 'required|exists:academic_years,id',
             'semester'         => 'required|integer|min:0|max:2',
             'major_id'         => 'required|exists:majors,id',
-            'student_ids'      => 'nullable|array',
-            'student_ids.*'    => 'exists:users,id',
         ]);
+
+        // ── Historical safety: detect teacher reassignment on course with exam history ──
+        // exam.teacher_id is snapshotted independently at exam creation, so changing
+        // course.teacher_id does NOT corrupt historical exam/result records.
+        // We log the change for audit purposes only.
+        $previousTeacherId = $course->teacher_id;
+        $newTeacherId      = (int) $data['teacher_id'];
+        $teacherChanged    = $previousTeacherId !== null && $previousTeacherId !== $newTeacherId;
+
+        if ($teacherChanged) {
+            $historicalExamCount = $course->exams()
+                ->whereIn('status', ['published', 'approved', 'closed'])
+                ->count();
+
+            if ($historicalExamCount > 0) {
+                // Log audit trail — exam.teacher_id records preserve the original teacher
+                \App\Models\ActivityLog::create([
+                    'user_id'     => auth()->id(),
+                    'action'      => 'course_teacher_reassigned',
+                    'model_type'  => Course::class,
+                    'model_id'    => $course->id,
+                    'description' => "Course '{$course->title}' ({$course->code}) teacher changed. "
+                        . "{$historicalExamCount} historical exam(s) retain their original teacher snapshot.",
+                    'ip_address'  => request()->ip(),
+                ]);
+            }
+        }
 
         $course->update([
             'title'            => $data['title'],
@@ -145,9 +193,17 @@ class CourseController extends Controller
             'major_id'         => $data['major_id'],
         ]);
 
-        $this->courseAssignment->syncCourseStudents($course, $request->input('student_ids', []));
+        // NOTE: enrollment sync is intentionally NOT called here.
+        // Student enrollments are managed independently via the Enrollments page.
+        // Calling syncCourseStudents() here with no student_ids would wipe
+        // all historical enrollment records every time course metadata is edited.
 
-        return redirect()->route('admin.courses.index')->with('success', 'Course updated.');
+        $successMsg = 'Course updated.';
+        if ($teacherChanged && isset($historicalExamCount) && $historicalExamCount > 0) {
+            $successMsg .= " Note: {$historicalExamCount} historical exam(s) retain their original teacher record.";
+        }
+
+        return redirect()->route('admin.courses.index')->with('success', $successMsg);
     }
 
     // ── Destroy ───────────────────────────────────────────────────────────

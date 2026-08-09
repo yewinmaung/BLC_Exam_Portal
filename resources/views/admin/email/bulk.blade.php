@@ -28,11 +28,18 @@
                 </div>
             </div>
 
+            @if(session('success'))
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                <i class="bi bi-check-circle-fill me-2"></i>{{ session('success') }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            @endif
+
             <form method="POST" action="{{ route('admin.email.bulk.send') }}">
                 @csrf
 
                 <div class="mb-3">
-                    <label class="form-label fw-600" style="font-size:0.82rem;font-weight:600">Recipients</label>
+                    <label class="form-label fw-semibold" style="font-size:0.82rem">Recipients</label>
                     <select name="recipients" class="form-select @error('recipients') is-invalid @enderror" required>
                         <option value="">— Select recipient group —</option>
                         @foreach($groups as $key => $label)
@@ -45,28 +52,15 @@
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label fw-600" style="font-size:0.82rem;font-weight:600">Use Template (optional)</label>
-                    <select name="template_slug" class="form-select" id="templateSelect">
-                        <option value="">— Compose manually below —</option>
-                        @foreach($templates as $tmpl)
-                        <option value="{{ $tmpl->slug }}" {{ old('template_slug') === $tmpl->slug ? 'selected' : '' }}>
-                            {{ $tmpl->name }} ({{ $tmpl->slug }})
-                        </option>
-                        @endforeach
-                    </select>
-                    <div class="form-text" style="font-size:0.75rem">If a template is selected, its subject and body override the fields below.</div>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label fw-600" style="font-size:0.82rem;font-weight:600">Subject</label>
+                    <label class="form-label fw-semibold" style="font-size:0.82rem">Subject</label>
                     <input type="text" name="subject" class="form-control @error('subject') is-invalid @enderror"
                            value="{{ old('subject') }}" maxlength="255" required>
                     @error('subject')<div class="invalid-feedback">{{ $message }}</div>@enderror
                 </div>
 
                 <div class="mb-4">
-                    <label class="form-label fw-600" style="font-size:0.82rem;font-weight:600">Body (HTML)</label>
-                    <textarea name="body_html" rows="10" id="bodyHtml"
+                    <label class="form-label fw-semibold" style="font-size:0.82rem">Body (HTML)</label>
+                    <textarea name="body_html" rows="10"
                               class="form-control @error('body_html') is-invalid @enderror"
                               placeholder="<p>Hello @{{student_name}},</p><p>Your message here…</p>"
                               required>{{ old('body_html') }}</textarea>
@@ -80,7 +74,7 @@
 
                 <button type="submit" class="btn btn-primary"
                         onclick="return confirm('Send to all recipients in the selected group? This cannot be undone.')">
-                    <i class="bi bi-send-check me-1"></i> Queue & Send
+                    <i class="bi bi-send-check me-1"></i> Queue &amp; Send
                 </button>
             </form>
         </div>

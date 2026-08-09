@@ -146,8 +146,7 @@
        href="{{ route('admin.email.outbox') }}">
         <i class="bi bi-clock-history"></i> Outbox
         @php
-            $outboxCount = \App\Models\EmailLog::where('status','queued')->count()
-                         + \App\Models\ScheduledEmail::where('is_sent', false)->count();
+            $outboxCount = \App\Models\EmailLog::where('status','queued')->count();
         @endphp
         @if($outboxCount > 0)
         <span class="nav-badge ms-auto">{{ $outboxCount > 99 ? '99+' : $outboxCount }}</span>
@@ -156,10 +155,6 @@
     <a class="nav-link {{ request()->routeIs('admin.email.logs*') ? 'active' : '' }}"
        href="{{ route('admin.email.logs') }}">
         <i class="bi bi-journal-text"></i> Logs
-    </a>
-    <a class="nav-link {{ request()->routeIs('admin.email.templates*') ? 'active' : '' }}"
-       href="{{ route('admin.email.templates') }}">
-        <i class="bi bi-file-earmark-code"></i> Templates
     </a>
     <a class="nav-link {{ request()->routeIs('admin.email.smtp*') ? 'active' : '' }}"
        href="{{ route('admin.email.smtp') }}">

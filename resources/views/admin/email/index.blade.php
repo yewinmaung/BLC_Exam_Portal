@@ -42,12 +42,10 @@
 <div class="row g-3 mb-4">
     @php
         $actions = [
-            ['label'=>'Send Test Email',   'icon'=>'bi-send',              'route'=>route('admin.email.test'),      'style'=>'primary'],
-            ['label'=>'Bulk Email',        'icon'=>'bi-send-check',        'route'=>route('admin.email.bulk'),      'style'=>'outline-primary'],
-            ['label'=>'Scheduled Emails',  'icon'=>'bi-calendar-check',    'route'=>route('admin.email.scheduled'), 'style'=>'outline-secondary'],
-            ['label'=>'Email Templates',   'icon'=>'bi-file-earmark-code', 'route'=>route('admin.email.templates'),'style'=>'outline-secondary'],
-            ['label'=>'Email Logs',        'icon'=>'bi-journal-text',      'route'=>route('admin.email.logs'),      'style'=>'outline-secondary'],
-            ['label'=>'SMTP Settings',     'icon'=>'bi-gear',              'route'=>route('admin.email.smtp'),      'style'=>'outline-secondary'],
+            ['label'=>'Send Test Email',   'icon'=>'bi-send',         'route'=>route('admin.email.test'),  'style'=>'primary'],
+            ['label'=>'Bulk Email',        'icon'=>'bi-send-check',   'route'=>route('admin.email.bulk'),  'style'=>'outline-primary'],
+            ['label'=>'Email Logs',        'icon'=>'bi-journal-text', 'route'=>route('admin.email.logs'),  'style'=>'outline-secondary'],
+            ['label'=>'SMTP Settings',     'icon'=>'bi-gear',         'route'=>route('admin.email.smtp'),  'style'=>'outline-secondary'],
         ];
     @endphp
     @foreach($actions as $action)

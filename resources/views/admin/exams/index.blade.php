@@ -176,120 +176,243 @@
     </div>
 </div>
 
-{{-- Exams Table --}}
-<div class="card">
-    <div class="card-header d-flex align-items-center justify-content-between">
-        <span><i class="bi bi-file-earmark-text me-2"></i>All Exams</span>
-        <span class="badge" style="background:var(--royal-light,#ede9fe);color:var(--royal,#3730a3)">
-            {{ $exams->total() }} total
-        </span>
-    </div>
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table mb-0" style="font-size:0.855rem">
-                <thead style="background:#f8f9fc">
-                    <tr>
-                        <th style="font-size:0.72rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;padding:0.65rem 1rem;border-bottom:1.5px solid #e8eaf2">Title</th>
-                        <th style="font-size:0.72rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;padding:0.65rem 0.75rem;border-bottom:1.5px solid #e8eaf2">Course</th>
-                        <th style="font-size:0.72rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;padding:0.65rem 0.75rem;border-bottom:1.5px solid #e8eaf2">Teacher</th>
-                        <th style="font-size:0.72rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;padding:0.65rem 0.75rem;border-bottom:1.5px solid #e8eaf2">Status</th>
-                        <th style="font-size:0.72rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;padding:0.65rem 0.75rem;border-bottom:1.5px solid #e8eaf2">Schedule</th>
-                        <th style="font-size:0.72rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;padding:0.65rem 0.75rem;border-bottom:1.5px solid #e8eaf2">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @forelse($exams as $e)
-                    <tr>
-                        <td style="padding:0.75rem 1rem;font-weight:600;color:var(--text-1,#111827)">
-                            {{ $e->title }}
-                            @php
-                                $yl = $e->course->year_level ?? 0;
-                                $sem = $e->course->semester ?? 0;
-                            @endphp
-                            @if($yl > 0)
-                            <div class="mt-1">
-                                <span style="font-size:0.68rem;background:#eef2ff;color:#3730a3;padding:0.1rem 0.45rem;border-radius:4px;font-weight:600">
-                                    {{ \App\Models\Course::$yearLevelLabels[$yl] ?? 'Year '.$yl }}
-                                    @if($sem > 0) · Sem {{ $sem }}@endif
-                                </span>
-                            </div>
-                            @endif
-                        </td>
-                        <td style="padding:0.75rem 0.75rem;color:#374151">
-                            {{ $e->course->title }}
-                            @if($e->course->major)
-                            <div style="font-size:0.7rem;color:#9ca3af">{{ $e->course->major->code ?? '' }}</div>
-                            @endif
-                        </td>
-                        <td style="padding:0.75rem 0.75rem;color:#374151">{{ $e->teacher->name }}</td>
-                        <td style="padding:0.75rem 0.75rem">
-                            <span class="status-pill status-{{ $e->status === 'pending_approval' ? 'pending' : $e->status }}">
-                                {{ ucfirst(str_replace('_', ' ', $e->status)) }}
-                            </span>
-                        </td>
-                        <td style="padding:0.75rem 0.75rem">
-                            @if($e->activeSchedule)
-                                <span style="font-size:0.78rem;color:#6b7280">
-                                    <i class="bi bi-calendar3 me-1"></i>{{ $e->activeSchedule->starts_at->format('M d, H:i') }}
-                                </span>
-                            @else
-                                <span class="text-muted small">—</span>
-                            @endif
-                        </td>
-                        <td style="padding:0.75rem 0.75rem">
-                            <div class="d-flex gap-1">
-                                <a href="{{ route('admin.exams.show', $e) }}" class="btn btn-sm btn-primary">
-                                    <i class="bi bi-gear me-1"></i>Manage
-                                </a>
-                                @if(in_array($e->status, ['published', 'closed']))
-                                <a href="{{ route('admin.exams.results', $e) }}"
-                                   class="btn btn-sm btn-outline-primary"
-                                   title="View Results">
-                                    <i class="bi bi-bar-chart-fill"></i>
-                                </a>
-                                @endif
-                            </div>
-                        </td>
-                    </tr>
-                    @empty
-                    <tr>
-                        <td colspan="6" class="text-center py-5 text-muted">
-                            <i class="bi bi-file-earmark-x d-block mb-2" style="font-size:2rem;opacity:0.3"></i>
-                            No exams found.
-                            @if(count($activeFilters ?? []))
-                            <div class="mt-2">
-                                <a href="{{ route('admin.exams.index') }}" class="btn btn-sm btn-outline-secondary">
-                                    <i class="bi bi-arrow-counterclockwise me-1"></i>Clear filters
-                                </a>
-                            </div>
-                            @endif
-                        </td>
-                    </tr>
-                    @endforelse
-                </tbody>
-            </table>
-        </div>
+{{-- Exams Accordion grouped by Academic Year → Year Level → Semester --}}
+@php
+    $totalExams = $exams->count();
+@endphp
 
-        {{-- Pagination --}}
-        @if($exams->hasPages())
-        <div class="px-3 py-2 border-top" style="background:#fafbff">
-            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-                <span style="font-size:0.78rem;color:#6b7280">
-                    Showing <strong style="color:#374151">{{ $exams->firstItem() }}</strong>
-                    – <strong style="color:#374151">{{ $exams->lastItem() }}</strong>
-                    of <strong style="color:#374151">{{ $exams->total() }}</strong> exams
-                </span>
-                {{ $exams->withQueryString()->links() }}
-            </div>
-        </div>
-        @elseif($exams->count())
-        <div class="px-3 py-2 border-top" style="background:#fafbff">
-            <span style="font-size:0.78rem;color:#6b7280">
-                Showing all <strong style="color:#374151">{{ $exams->total() }}</strong> exam{{ $exams->total() !== 1 ? 's' : '' }}
-            </span>
+<div class="d-flex align-items-center justify-content-between mb-2 px-1">
+    <span style="font-size:0.82rem;color:#6b7280">
+        @if($totalExams)
+            Showing <strong style="color:#374151">{{ $totalExams }}</strong> exam{{ $totalExams !== 1 ? 's' : '' }}
+        @endif
+    </span>
+    @if($totalExams)
+    <div class="d-flex gap-1">
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="expandAllBtn" style="font-size:0.75rem">
+            <i class="bi bi-chevron-expand me-1"></i>Expand All
+        </button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="collapseAllBtn" style="font-size:0.75rem">
+            <i class="bi bi-chevron-contract me-1"></i>Collapse All
+        </button>
+    </div>
+    @endif
+</div>
+
+@if($totalExams === 0)
+<div class="card">
+    <div class="card-body text-center py-5 text-muted">
+        <i class="bi bi-file-earmark-x d-block mb-2" style="font-size:2rem;opacity:0.3"></i>
+        No exams found.
+        @if(count($activeFilters ?? []))
+        <div class="mt-2">
+            <a href="{{ route('admin.exams.index') }}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-arrow-counterclockwise me-1"></i>Clear filters
+            </a>
         </div>
         @endif
     </div>
 </div>
+@else
+
+{{-- ── Outer accordion: Academic Year ──────────────────────────────── --}}
+<div class="accordion" id="accordionAY">
+    @foreach($grouped as $ayId => $byYearLevel)
+    @php
+        $ayModel   = $ayMap[$ayId] ?? null;
+        $ayLabel   = $ayModel ? $ayModel->name.($ayModel->is_current ? ' (Current)' : '') : 'No Academic Year';
+        $ayExamCnt = array_sum(array_map(fn($bySem) => array_sum(array_map('count', $bySem)), $byYearLevel));
+        $ayKey     = 'ay-'.$ayId;
+    @endphp
+    <div class="accordion-item border mb-2" style="border-radius:8px;overflow:hidden;border-color:#e2e8f0">
+
+        {{-- Academic Year header --}}
+        <h2 class="accordion-header" id="hd-{{ $ayKey }}">
+            <button class="accordion-button"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#cl-{{ $ayKey }}"
+                    aria-expanded="true"
+                    aria-controls="cl-{{ $ayKey }}"
+                    style="background:var(--blc-navy,#1e3a5f);color:#fff;font-weight:700;font-size:0.9rem;padding:0.75rem 1rem">
+                <i class="bi bi-calendar-range me-2"></i>
+                {{ $ayLabel }}
+                <span class="badge ms-2" style="background:rgba(255,255,255,0.2);color:#fff;font-size:0.72rem;font-weight:500">
+                    {{ $ayExamCnt }} exam{{ $ayExamCnt !== 1 ? 's' : '' }}
+                </span>
+            </button>
+        </h2>
+
+        <div id="cl-{{ $ayKey }}"
+             class="accordion-collapse collapse show"
+             aria-labelledby="hd-{{ $ayKey }}"
+             data-bs-parent="#accordionAY">
+            <div class="accordion-body p-2">
+
+                {{-- ── Middle accordion: Year Level ──────────────────────── --}}
+                <div class="accordion" id="accordionYL-{{ $ayId }}">
+                    @foreach($byYearLevel as $yl => $bySemester)
+                    @php
+                        $ylLabel   = \App\Models\Course::$yearLevelLabels[$yl] ?? 'Year '.$yl;
+                        $ylExamCnt = array_sum(array_map('count', $bySemester));
+                        $ylKey     = 'yl-'.$ayId.'-'.$yl;
+                    @endphp
+                    <div class="accordion-item border mb-1" style="border-radius:6px;overflow:hidden;border-color:#dde3ee">
+
+                        {{-- Year Level header --}}
+                        <h2 class="accordion-header" id="hd-{{ $ylKey }}">
+                            <button class="accordion-button"
+                                    type="button"
+                                    data-bs-toggle="collapse"
+                                    data-bs-target="#cl-{{ $ylKey }}"
+                                    aria-expanded="true"
+                                    aria-controls="cl-{{ $ylKey }}"
+                                    style="background:#eef2ff;color:#3730a3;font-weight:700;font-size:0.83rem;padding:0.6rem 0.9rem">
+                                <i class="bi bi-person-workspace me-2"></i>
+                                {{ $ylLabel }}
+                                <span class="badge ms-2" style="background:#c7d2fe;color:#3730a3;font-size:0.68rem;font-weight:500">
+                                    {{ $ylExamCnt }} exam{{ $ylExamCnt !== 1 ? 's' : '' }}
+                                </span>
+                            </button>
+                        </h2>
+
+                        <div id="cl-{{ $ylKey }}"
+                             class="accordion-collapse collapse show"
+                             aria-labelledby="hd-{{ $ylKey }}"
+                             data-bs-parent="#accordionYL-{{ $ayId }}">
+                            <div class="accordion-body p-2">
+
+                                {{-- ── Inner accordion: Semester ─────────────────── --}}
+                                <div class="accordion" id="accordionSem-{{ $ayId }}-{{ $yl }}">
+                                    @foreach($bySemester as $sem => $semExams)
+                                    @php
+                                        $semLabel   = \App\Models\Course::$semesterLabels[$sem] ?? 'Semester '.$sem;
+                                        $semExamCnt = count($semExams);
+                                        $semKey     = 'sem-'.$ayId.'-'.$yl.'-'.$sem;
+                                    @endphp
+                                    <div class="accordion-item border mb-1" style="border-radius:5px;overflow:hidden;border-color:#e8eaf2">
+
+                                        {{-- Semester header --}}
+                                        <h2 class="accordion-header" id="hd-{{ $semKey }}">
+                                            <button class="accordion-button"
+                                                    type="button"
+                                                    data-bs-toggle="collapse"
+                                                    data-bs-target="#cl-{{ $semKey }}"
+                                                    aria-expanded="true"
+                                                    aria-controls="cl-{{ $semKey }}"
+                                                    style="background:#f5f3ff;color:#7c3aed;font-weight:600;font-size:0.8rem;padding:0.55rem 0.85rem">
+                                                <i class="bi bi-bookmark-fill me-2" style="font-size:0.75rem"></i>
+                                                {{ $semLabel }}
+                                                <span class="badge ms-2" style="background:#ede9fe;color:#7c3aed;font-size:0.65rem;font-weight:500">
+                                                    {{ $semExamCnt }} exam{{ $semExamCnt !== 1 ? 's' : '' }}
+                                                </span>
+                                            </button>
+                                        </h2>
+
+                                        <div id="cl-{{ $semKey }}"
+                                             class="accordion-collapse collapse show"
+                                             aria-labelledby="hd-{{ $semKey }}"
+                                             data-bs-parent="#accordionSem-{{ $ayId }}-{{ $yl }}">
+                                            <div class="accordion-body p-0">
+
+                                                {{-- Exams table --}}
+                                                <div class="table-responsive">
+                                                    <table class="table mb-0" style="font-size:0.845rem">
+                                                        <thead style="background:#f8f9fc">
+                                                            <tr>
+                                                                <th style="font-size:0.7rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;padding:0.55rem 1rem;border-bottom:1.5px solid #e8eaf2;border-top:0">Title</th>
+                                                                <th style="font-size:0.7rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;padding:0.55rem 0.75rem;border-bottom:1.5px solid #e8eaf2;border-top:0">Course</th>
+                                                                <th style="font-size:0.7rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;padding:0.55rem 0.75rem;border-bottom:1.5px solid #e8eaf2;border-top:0">Teacher</th>
+                                                                <th style="font-size:0.7rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;padding:0.55rem 0.75rem;border-bottom:1.5px solid #e8eaf2;border-top:0">Status</th>
+                                                                <th style="font-size:0.7rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;padding:0.55rem 0.75rem;border-bottom:1.5px solid #e8eaf2;border-top:0">Schedule</th>
+                                                                <th style="font-size:0.7rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;padding:0.55rem 0.75rem;border-bottom:1.5px solid #e8eaf2;border-top:0">Actions</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            @foreach($semExams as $e)
+                                                            <tr>
+                                                                <td style="padding:0.65rem 1rem;font-weight:600;color:var(--text-1,#111827)">
+                                                                    {{ $e->title }}
+                                                                </td>
+                                                                <td style="padding:0.65rem 0.75rem;color:#374151">
+                                                                    {{ $e->course->title }}
+                                                                    @if($e->course->major)
+                                                                    <div style="font-size:0.7rem;color:#9ca3af">{{ $e->course->major->code }}</div>
+                                                                    @endif
+                                                                </td>
+                                                                <td style="padding:0.65rem 0.75rem;color:#374151">{{ $e->teacher->name }}</td>
+                                                                <td style="padding:0.65rem 0.75rem">
+                                                                    <span class="status-pill status-{{ $e->status === 'pending_approval' ? 'pending' : $e->status }}">
+                                                                        {{ ucfirst(str_replace('_', ' ', $e->status)) }}
+                                                                    </span>
+                                                                </td>
+                                                                <td style="padding:0.65rem 0.75rem">
+                                                                    @if($e->activeSchedule)
+                                                                        <span style="font-size:0.78rem;color:#6b7280">
+                                                                            <i class="bi bi-calendar3 me-1"></i>{{ $e->activeSchedule->starts_at->format('M d, H:i') }}
+                                                                        </span>
+                                                                    @else
+                                                                        <span class="text-muted small">—</span>
+                                                                    @endif
+                                                                </td>
+                                                                <td style="padding:0.65rem 0.75rem">
+                                                                    <div class="d-flex gap-1">
+                                                                        <a href="{{ route('admin.exams.show', $e) }}" class="btn btn-sm btn-primary">
+                                                                            <i class="bi bi-gear me-1"></i>Manage
+                                                                        </a>
+                                                                        @if(in_array($e->status, ['published', 'closed']))
+                                                                        <a href="{{ route('admin.exams.results', $e) }}"
+                                                                           class="btn btn-sm btn-outline-primary"
+                                                                           title="View Results">
+                                                                            <i class="bi bi-bar-chart-fill"></i>
+                                                                        </a>
+                                                                        @endif
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                            @endforeach
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+
+                                            </div>
+                                        </div>
+                                    </div>{{-- /semester accordion item --}}
+                                    @endforeach
+                                </div>{{-- /semester accordion --}}
+
+                            </div>
+                        </div>
+                    </div>{{-- /year level accordion item --}}
+                    @endforeach
+                </div>{{-- /year level accordion --}}
+
+            </div>
+        </div>
+    </div>{{-- /academic year accordion item --}}
+    @endforeach
+</div>{{-- /academic year accordion --}}
+
+@endif
 
 @endsection
+
+@push('scripts')
+<script>
+(function () {
+    // Expand / Collapse all accordion panels
+    document.getElementById('expandAllBtn')?.addEventListener('click', function () {
+        document.querySelectorAll('.accordion-collapse').forEach(function (el) {
+            var bsCollapse = bootstrap.Collapse.getOrCreateInstance(el, { toggle: false });
+            bsCollapse.show();
+        });
+    });
+    document.getElementById('collapseAllBtn')?.addEventListener('click', function () {
+        document.querySelectorAll('.accordion-collapse').forEach(function (el) {
+            var bsCollapse = bootstrap.Collapse.getOrCreateInstance(el, { toggle: false });
+            bsCollapse.hide();
+        });
+    });
+})();
+</script>
+@endpush

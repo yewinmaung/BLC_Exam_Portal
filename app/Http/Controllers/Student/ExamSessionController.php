@@ -58,34 +58,18 @@ class ExamSessionController extends Controller
         //      using the saved answers, then redirects with a message.
         //
         if ($attempt->status === 'in_progress' && $attempt->disconnected_at !== null) {
-            if ($attempt->canAutoRecover()) {
-                // Window still open — do NOT render the exam page.
-                $recoveryLimit    = (int) config('exam_security.recovery_time_limit', 300);
-                $recoveryDeadline = $attempt->disconnected_at->copy()->addSeconds($recoveryLimit);
-                $remaining        = max(0, (int) now()->diffInSeconds($recoveryDeadline, false));
-                $minutes          = (int) floor($remaining / 60);
-                $seconds          = $remaining % 60;
-                $countdownStr     = sprintf('%d:%02d', $minutes, $seconds);
-
-                return redirect()->route('student.exams.index')
-                    ->with('info',
-                        "Your exam session was interrupted. "
-                        . "You cannot re-enter the exam during the recovery window. "
-                        . "Your saved answers are safe. "
-                        . "The exam will be automatically submitted in {$countdownStr}."
-                    );
-            }
-
-            // Window expired — let handleReconnect() finalize and grade.
+            // Call handleReconnect() for both sub-cases:
+            //   A) Recovery window still open → clears disconnected_at, resumes exam
+            //   B) Recovery window expired    → auto-submits, grades, redirects
             $result = $this->recovery->handleReconnect($attempt);
 
             if (! $result['success']) {
+                // Window expired — attempt was finalized and graded
                 return redirect()->route('student.exams.show', $attempt->exam_id)
-                    ->with('error', $result['message']);
+                    ->with('info', $result['message']);
             }
 
-            // (Path A of handleReconnect should not be reached here because
-            //  canAutoRecover() returned false above, but kept for safety.)
+            // Path A: session restored — render exam with frozen timer
             $resumeQuestionId = $attempt->last_question_id;
             $attempt->refresh();
             session()->flash('info', $result['message']);

@@ -17,7 +17,6 @@ class DatabaseSeeder extends Seeder
             QuestionCategorySeeder::class,
             AcademicYearSeeder::class,
             YearLevelSeeder::class,
-            EmailTemplateSeeder::class,
         ]);
 
         $adminRole = Role::where('slug', RoleSlug::ADMIN)->first();

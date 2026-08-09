@@ -37,7 +37,7 @@ class ExamController extends Controller
         $academicYears = AcademicYear::orderByDesc('start_year')->get();
         $majors        = Major::where('is_active', true)->orderBy('name')->get();
 
-        $exams = Exam::with(['course.major', 'teacher', 'activeSchedule'])
+        $exams = Exam::with(['academicYear', 'course.major', 'teacher', 'activeSchedule'])
             ->when($search, fn ($q) =>
                 $q->where('title', 'like', "%{$search}%")
             )
@@ -48,7 +48,7 @@ class ExamController extends Controller
                 $q->whereHas('course', fn ($c) => $c->where('year_level', $yearLevel))
             )
             ->when($academicYearId, fn ($q) =>
-                $q->whereHas('course', fn ($c) => $c->where('academic_year_id', $academicYearId))
+                $q->where('academic_year_id', $academicYearId)
             )
             ->when($majorId, fn ($q) =>
                 $q->whereHas('course', fn ($c) => $c->where('major_id', $majorId))
@@ -57,15 +57,46 @@ class ExamController extends Controller
                 $q->whereHas('course', fn ($c) => $c->where('semester', $semester))
             )
             ->latest()
-            ->paginate(10)
-            ->withQueryString();
+            ->get();
+
+        // Group: Academic Year (exam's own) → Year Level → Semester
+        // Uses exam->academic_year_id (the enrolled/exam academic year),
+        // NOT course->academic_year_id (which is the course's structural year).
+        $grouped = [];
+        foreach ($exams as $exam) {
+            $course = $exam->course;
+            if (! $course) continue;
+
+            $ayId = $exam->academic_year_id ?? 0;
+            $yl   = (int) $course->year_level;
+            $sem  = (int) $course->semester;
+
+            $grouped[$ayId][$yl][$sem][] = $exam;
+        }
+
+        // Sort: newest AY first, then year level and semester ascending
+        krsort($grouped);
+        foreach ($grouped as &$byYl) {
+            ksort($byYl);
+            foreach ($byYl as &$bySem) {
+                ksort($bySem);
+            }
+        }
+        unset($byYl, $bySem);
+
+        // Build AY lookup map from exam's own academic_year_id values
+        $ayIds = collect($exams)->pluck('academic_year_id')->filter()->unique();
+        $ayMap = AcademicYear::whereIn('id', $ayIds)
+            ->orderByDesc('start_year')
+            ->get()
+            ->keyBy('id');
 
         // Auto-mark all unread 'exam' category notifications as read
         // when the user visits this page (badge clears on page load).
         \App\Models\UserNotification::markCategoryRead(auth()->id(), 'exam');
 
         return view('admin.exams.index', compact(
-            'exams', 'courses', 'yearLevels', 'academicYears', 'majors'
+            'exams', 'grouped', 'ayMap', 'courses', 'yearLevels', 'academicYears', 'majors'
         ));
     }
 

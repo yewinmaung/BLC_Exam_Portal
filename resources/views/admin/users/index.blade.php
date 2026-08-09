@@ -86,13 +86,9 @@
                                         </button>
                                     </form>
                                     @else
-                                    <form action="{{ route('admin.users.update', $u) }}" method="POST" class="d-inline">
-                                        @csrf @method('PUT')
-                                        <input type="hidden" name="name"          value="{{ $u->name }}">
-                                        <input type="hidden" name="email"         value="{{ $u->email }}">
-                                        <input type="hidden" name="role_id"       value="{{ $u->role_id }}">
-                                        <input type="hidden" name="academic_year" value="{{ $u->academic_year }}">
-                                        <input type="hidden" name="is_active"     value="1">
+                                    <form action="{{ route('admin.users.restore', $u) }}" method="POST" class="d-inline"
+                                          onsubmit="return confirm('Reinstate {{ addslashes($u->name) }}?')">
+                                        @csrf
                                         <button class="btn btn-sm btn-success" title="Reinstate account">
                                             <i class="bi bi-check-circle"></i>
                                         </button>

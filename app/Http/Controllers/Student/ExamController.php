@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Student;
 use App\Http\Controllers\Controller;
 use App\Models\Exam;
 use App\Models\ExamAttempt;
+use App\Models\StudentYearRecord;
 use App\Services\ExamAccessService;
 use App\Services\GradingService;
 use Illuminate\Support\Str;
@@ -21,9 +22,38 @@ class ExamController extends Controller
     {
         $studentId = auth()->id();
 
+        // Collect the (academic_year_id, year_level_id) pairs this student actually
+        // belongs to, according to their StudentYearRecord.  These are the only
+        // combinations for which the student is eligible to see exams.
+        $studentYearPairs = StudentYearRecord::where('student_id', $studentId)
+            ->get(['academic_year_id', 'year_level_id']);
+
         $exams = Exam::with(['course', 'activeSchedule'])
             ->where('status', 'published')
-            ->whereHas('course.enrollments', fn ($q) => $q->where('student_id', $studentId))
+            ->where(function ($query) use ($studentId, $studentYearPairs) {
+                foreach ($studentYearPairs as $record) {
+                    $query->orWhere(function ($q) use ($studentId, $record) {
+                        $q->where('academic_year_id', $record->academic_year_id)
+                          ->whereHas('course', function ($cq) use ($record) {
+                              // Match course year_level (integer) against the
+                              // level integer stored on the student's year_level record.
+                              $cq->whereHas('yearLevel', function ($ylq) use ($record) {
+                                  $ylq->where('id', $record->year_level_id);
+                              });
+                          })
+                          ->whereHas('course.enrollments', function ($eq) use ($studentId) {
+                              $eq->where('student_id', $studentId);
+                          });
+                    });
+                }
+
+                // Fallback: if the student has no year records at all, show
+                // nothing (the loop above produces no orWhere clauses, so the
+                // outer where-closure evaluates to false by default).
+                if ($studentYearPairs->isEmpty()) {
+                    $query->whereRaw('0 = 1');
+                }
+            })
             ->latest()
             ->paginate(15);
 
@@ -54,11 +84,21 @@ class ExamController extends Controller
             ->latest('terminated_at')
             ->get();
 
+        // Count of used (finalized) attempts per exam — used to calculate remaining attempts
+        // when the exam allows more than 1 attempt.
+        $usedAttemptCounts = ExamAttempt::where('student_id', $studentId)
+            ->whereIn('status', ['submitted', 'terminated', 'suspicious', 'rejected'])
+            ->whereIn('exam_id', $examIds)
+            ->selectRaw('exam_id, COUNT(*) as total')
+            ->groupBy('exam_id')
+            ->pluck('total', 'exam_id');
+
         // Mark exam notifications as read when student opens Exams page
         \App\Models\UserNotification::markCategoryRead($studentId, 'exam');
 
         return view('student.exams.index', compact(
-            'exams', 'securityTerminatedAttempts', 'activeAttempts', 'finalizedAttempts'
+            'exams', 'securityTerminatedAttempts', 'activeAttempts', 'finalizedAttempts',
+            'usedAttemptCounts'
         ));
     }
 

@@ -12,11 +12,7 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        // Process due scheduled emails every minute
-        $schedule->command('email:process-scheduled')
-            ->everyMinute()
-            ->withoutOverlapping()
-            ->runInBackground();
+        // No scheduled tasks
     }
 
     /**

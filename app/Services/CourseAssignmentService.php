@@ -50,14 +50,44 @@ class CourseAssignmentService
 
     /**
      * Sync teacher → course assignments (sets/clears teacher_id on courses).
+     *
+     * HISTORICAL SAFETY:
+     * Courses that have published, approved, or closed exams represent completed
+     * academic history. We do NOT strip teacher_id from those courses when
+     * reassigning, because the teacher display on historical records depends on
+     * course.teacher_id when exam.teacher_id is not separately shown.
+     *
+     * Courses with only draft/pending_approval exams (or no exams) are considered
+     * "current/upcoming" and can safely be unassigned.
+     *
+     * Note: exam.teacher_id is snapshotted at exam creation and never mutated,
+     * so exam-level history is always preserved regardless of this change.
      */
     public function syncTeacherCourses(User $teacher, array $courseIds): void
     {
         $courseIds = array_values(array_unique(array_map('intval', $courseIds)));
 
-        Course::where('teacher_id', $teacher->id)
+        // Find IDs of courses currently assigned to this teacher that are NOT
+        // in the new list — candidates for unassignment.
+        $toUnassign = Course::where('teacher_id', $teacher->id)
             ->when($courseIds !== [], fn ($q) => $q->whereNotIn('id', $courseIds))
-            ->update(['teacher_id' => null]);
+            ->pluck('id')
+            ->all();
+
+        if (!empty($toUnassign)) {
+            // Only unassign courses that have NO historical (published/approved/closed) exams.
+            // Courses with historical exams keep their teacher_id to preserve display context.
+            $safeToUnassign = Course::whereIn('id', $toUnassign)
+                ->whereDoesntHave('exams', fn ($q) =>
+                    $q->whereIn('status', ['published', 'approved', 'closed'])
+                )
+                ->pluck('id')
+                ->all();
+
+            if (!empty($safeToUnassign)) {
+                Course::whereIn('id', $safeToUnassign)->update(['teacher_id' => null]);
+            }
+        }
 
         if ($courseIds !== []) {
             Course::whereIn('id', $courseIds)->update(['teacher_id' => $teacher->id]);
