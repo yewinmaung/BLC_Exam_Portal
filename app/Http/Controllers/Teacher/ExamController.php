@@ -9,6 +9,7 @@ use App\Models\Exam;
 use App\Models\Question;
 use App\Models\QuestionCategory;
 use App\Models\Role;
+use App\Models\StudentYearRecord;
 use App\Models\User;
 use App\Services\EncryptionService;
 use App\Services\ExamAccessService;
@@ -447,7 +448,7 @@ class ExamController extends Controller
 
             case 'incomplete':
                 // Return placeholder rows for enrolled-but-no-result students
-                $enrolledIds   = $exam->course->enrollments()->pluck('student_id');
+                $enrolledIds   = $this->eligibleStudentIds($exam);
                 $completedIds  = $exam->results()->pluck('student_id');
                 $incompleteIds = $enrolledIds->diff($completedIds);
 
@@ -469,7 +470,7 @@ class ExamController extends Controller
 
                 // Stats (all results, not filtered)
                 $allResults         = $exam->results()->with('student')->get();
-                $enrolledStudentIds = $exam->course->enrollments()->pluck('student_id');
+                $enrolledStudentIds = $this->eligibleStudentIds($exam);
                 $resultStudentIds   = $allResults->pluck('student_id');
                 $absentStudents     = User::whereIn('id', $enrolledStudentIds)
                     ->whereNotIn('id', $resultStudentIds)
@@ -492,7 +493,7 @@ class ExamController extends Controller
 
         // ── Stats (always over all results, not the filtered subset) ─────
         $allResults         = $exam->results()->with('student')->get();
-        $enrolledStudentIds = $exam->course->enrollments()->pluck('student_id');
+        $enrolledStudentIds = $this->eligibleStudentIds($exam);
         $resultStudentIds   = $allResults->pluck('student_id');
 
         $absentStudents = User::whereIn('id', $enrolledStudentIds)
@@ -506,6 +507,41 @@ class ExamController extends Controller
         return view('teacher.exams.results', compact(
             'exam', 'results', 'filter', 'search', 'stats', 'absentStudents'
         ));
+    }
+
+    /**
+     * Returns the IDs of students who are eligible for this exam:
+     * - enrolled in the exam's course
+     * - AND have a StudentYearRecord for the exam's academic year + course year level
+     *
+     * This prevents students from past academic years (same year level, different year)
+     * from appearing in the candidate / absent-student list.
+     */
+    private function eligibleStudentIds(Exam $exam): \Illuminate\Support\Collection
+    {
+        $course = $exam->course;
+
+        // All students enrolled in this course
+        $enrolledIds = $course->enrollments()->pluck('student_id');
+
+        if ($enrolledIds->isEmpty() || ! $exam->academic_year_id) {
+            return $enrolledIds;
+        }
+
+        // Resolve the YearLevel ID that corresponds to the course's integer year_level
+        $yearLevelId = \App\Models\YearLevel::where('level', $course->year_level)->value('id');
+
+        if (! $yearLevelId) {
+            return $enrolledIds;
+        }
+
+        // Keep only students whose record matches this exam's academic year + year level
+        $eligibleIds = StudentYearRecord::whereIn('student_id', $enrolledIds)
+            ->where('academic_year_id', $exam->academic_year_id)
+            ->where('year_level_id', $yearLevelId)
+            ->pluck('student_id');
+
+        return $eligibleIds;
     }
 
     /** Compute summary statistics for the results page. */

@@ -104,6 +104,25 @@ class ExamAccessService
             return false;
         }
 
+        // The student must also have a year record matching the exam's academic year
+        // and the course's year level — prevents students from past cohorts taking
+        // exams they are no longer eligible for.
+        if ($exam->academic_year_id) {
+            $course      = $exam->course;
+            $yearLevelId = \App\Models\YearLevel::where('level', $course->year_level)->value('id');
+
+            if ($yearLevelId) {
+                $hasMatchingRecord = \App\Models\StudentYearRecord::where('student_id', $user->id)
+                    ->where('academic_year_id', $exam->academic_year_id)
+                    ->where('year_level_id', $yearLevelId)
+                    ->exists();
+
+                if (! $hasMatchingRecord) {
+                    return false;
+                }
+            }
+        }
+
         // Attempt limit is set per schedule; default is 1
         $allowedAttempts = max(1, (int) ($schedule->attempt_limit ?? 1));
 

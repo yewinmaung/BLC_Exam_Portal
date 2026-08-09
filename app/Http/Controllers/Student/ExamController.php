@@ -23,8 +23,14 @@ class ExamController extends Controller
         $studentId = auth()->id();
 
         // Collect the (academic_year_id, year_level_id) pairs this student actually
-        // belongs to, according to their StudentYearRecord.  These are the only
-        // combinations for which the student is eligible to see exams.
+        // belongs to, according to their StudentYearRecord.
+        // The exam is eligible if:
+        //   exam.academic_year_id  = student's record academic year
+        //   exam's course year_level = student's record year level
+        //   student is enrolled in that course
+        // This prevents exams from OTHER academic years leaking in, while still
+        // showing all exams the student legitimately belongs to — regardless of
+        // whether that academic year is currently marked "is_current".
         $studentYearPairs = StudentYearRecord::where('student_id', $studentId)
             ->get(['academic_year_id', 'year_level_id']);
 
@@ -47,9 +53,7 @@ class ExamController extends Controller
                     });
                 }
 
-                // Fallback: if the student has no year records at all, show
-                // nothing (the loop above produces no orWhere clauses, so the
-                // outer where-closure evaluates to false by default).
+                // No year records at all → show nothing.
                 if ($studentYearPairs->isEmpty()) {
                     $query->whereRaw('0 = 1');
                 }
