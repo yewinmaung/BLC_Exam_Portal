@@ -6,7 +6,6 @@ use App\Models\ActivityLog;
 use App\Services\InboxSyncService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
@@ -42,7 +41,7 @@ use Illuminate\Support\Facades\Log;
  *  - EmailService, SendEmailJob, OTP jobs — untouched.
  *  - The database queue (jobs table) is used automatically.
  */
-class InboxSyncJob implements ShouldQueue, ShouldBeUnique
+class InboxSyncJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -65,17 +64,6 @@ class InboxSyncJob implements ShouldQueue, ShouldBeUnique
     public function __construct()
     {
         $this->onQueue('emails');
-    }
-
-    /**
-     * How long (seconds) the unique lock should be held.
-     * Matches the job timeout so a stuck job never blocks the next scheduled run.
-     * Implements ShouldBeUnique — prevents duplicate queued jobs if the scheduler
-     * fires before the previous InboxSyncJob has finished.
-     */
-    public function uniqueFor(): int
-    {
-        return $this->timeout;
     }
 
     public function handle(InboxSyncService $syncService): void

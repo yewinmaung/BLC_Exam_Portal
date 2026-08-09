@@ -29,11 +29,13 @@ class StudentController extends Controller
 
     public function index(Request $request)
     {
-        $search     = $request->string('search')->trim()->limit(100)->value();
+        $search      = $request->string('search')->trim()->limit(100)->value();
         $yearLevelId = $request->filled('year_level_id') ? (int) $request->year_level_id : null;
         $status      = $request->filled('status') ? $request->status : null;
 
-        $yearLevels = YearLevel::orderBy('level')->get();
+        $yearLevels    = YearLevel::orderBy('level')->get();
+        $academicYears = AcademicYear::orderByDesc('start_year')->get();
+        $majors        = Major::where('is_active', true)->orderBy('name')->get();
 
         $students = User::whereHas('role', fn ($q) => $q->where('slug', RoleSlug::STUDENT))
             ->with('role')
@@ -53,7 +55,33 @@ class StudentController extends Controller
             ->paginate(15)
             ->withQueryString();
 
-        return view('admin.students.index', compact('students', 'yearLevels'));
+        // ── Build grouped data for the accordion ──────────────────────────
+        // Loads ALL active StudentYearRecords (not paginated) for the accordion view.
+        // Grouped: Academic Year → Year Level → Semester → Major → students
+        $groupedRecords = StudentYearRecord::with([
+                'student:id,name,email,is_active',
+                'academicYear:id,name,start_year',
+                'yearLevel:id,level,name',
+            ])
+            ->where('status', 'active')
+            ->orderBy('academic_year_id', 'desc')
+            ->orderBy('year_level_id')
+            ->orderBy('semester')
+            ->get()
+            // Group: AcademicYear → YearLevel → Semester → Major
+            ->groupBy([
+                fn ($r) => $r->academicYear?->name ?? 'Unassigned',
+                fn ($r) => $r->yearLevel?->name    ?? 'Unknown Level',
+                fn ($r) => 'Semester ' . ($r->semester ?? '1'),
+                fn ($r) => $r->major               ?? 'No Major',
+            ]);
+
+        // Sort academic years descending (newest first) — preserve key order after groupBy
+        $ayStartYears = AcademicYear::pluck('start_year', 'name')->toArray();
+
+        return view('admin.students.index', compact(
+            'students', 'yearLevels', 'academicYears', 'majors', 'groupedRecords', 'ayStartYears'
+        ));
     }
 
     public function create()
