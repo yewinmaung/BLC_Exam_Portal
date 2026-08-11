@@ -230,7 +230,7 @@
                                             </code>
                                         </td>
                                         <td style="padding:0.55rem 0.75rem;color:#6b7280;font-size:0.8rem">
-                                            {{ $e->course?->teacher?->name ?? '—' }}
+                                            {{ $e->historicalTeacher?->name ?? '—' }}
                                         </td>
                                     </tr>
                                     @endforeach

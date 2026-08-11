@@ -193,6 +193,11 @@ class StudentController extends Controller
     public function show(User $student)
     {
         $this->ensureStudent($student);
+
+        // Load enrollments with course.teacher included so the fallback path can
+        // read courses.teacher_id when no exam snapshot exists yet for that year.
+        // The primary source (exams.teacher_id) is resolved further below and
+        // takes priority — course.teacher is only used as the fallback.
         $student->load(['role', 'enrollments.course.teacher']);
 
         $yearRecords = StudentYearRecord::with(['academicYear', 'yearLevel'])
@@ -204,6 +209,101 @@ class StudentController extends Controller
         $academicYears = AcademicYear::orderByDesc('start_year')->get();
         $yearLevels    = YearLevel::orderBy('level')->get();
         $enrolledCourseIds = $student->enrollments()->pluck('course_id')->all();
+
+        // ── Resolve teacher per enrollment via exams.teacher_id with fallback ──
+        //
+        // Priority 1 — exams.teacher_id (immutable snapshot):
+        //   When an exam exists for the course + the matching academic year,
+        //   use that exam's teacher_id. This is who actually taught the course that year.
+        //
+        // Priority 2 — courses.teacher_id (current assignment / fallback):
+        //   When no exam has been created yet for this course in the enrollment year,
+        //   fall back to courses.teacher_id. This shows the assigned teacher before
+        //   any exam snapshot exists — e.g. a new academic year where exams are pending.
+        //
+        // CRITICAL: the exam lookup is scoped by BOTH course_id AND academic_year_id.
+        // Without the academic year constraint a query by course_id alone would return
+        // a 2022-2023 exam (T2) for a student enrolled in 2018-2019 (T1).
+
+        // Build a fast lookup: [year_level][semester] → academic_year_id
+        // from the student's own year records (mirrors the blade grouping logic).
+        $yrAcadYearMap = [];
+        foreach ($yearRecords as $yr) {
+            $lvl = $yr->yearLevel?->level ?? 0;
+            $sem = (int) ($yr->semester ?? 0);
+            $yrAcadYearMap[$lvl][$sem] = $yr->academic_year_id;
+            if (! isset($yrAcadYearMap[$lvl][0])) {
+                $yrAcadYearMap[$lvl][0] = $yr->academic_year_id;
+            }
+        }
+
+        // Collect unique (course_id, academic_year_id) pairs needed for the exam query
+        $pairs = [];
+        foreach ($student->enrollments as $enrollment) {
+            $course = $enrollment->course;
+            if (! $course) continue;
+
+            $lvl = (int) ($course->year_level ?? 0);
+            $sem = (int) ($course->semester   ?? 0);
+
+            $acadYearId = $yrAcadYearMap[$lvl][$sem]
+                ?? $yrAcadYearMap[$lvl][0]
+                ?? $yrAcadYearMap[0][$sem]
+                ?? $yrAcadYearMap[0][0]
+                ?? null;
+
+            if ($acadYearId) {
+                $pairs[] = ['course_id' => $course->id, 'ay_id' => $acadYearId];
+            }
+        }
+
+        // Fetch all relevant exam snapshots in one query, build compound-key map:
+        //   "courseId:ayId" → teacher User model
+        $historicalTeacherMap = [];
+
+        if (! empty($pairs)) {
+            $courseIds = array_unique(array_column($pairs, 'course_id'));
+            $ayIds     = array_unique(array_column($pairs, 'ay_id'));
+
+            $exams = \App\Models\Exam::with('teacher')
+                ->whereIn('course_id', $courseIds)
+                ->whereIn('academic_year_id', $ayIds)
+                ->whereNotNull('teacher_id')
+                ->orderByRaw("FIELD(status, 'closed', 'published', 'approved', 'pending_approval', 'draft')")
+                ->orderByDesc('id')
+                ->get();
+
+            foreach ($exams as $exam) {
+                $key = $exam->course_id . ':' . $exam->academic_year_id;
+                if (! isset($historicalTeacherMap[$key])) {
+                    $historicalTeacherMap[$key] = $exam->teacher;
+                }
+            }
+        }
+
+        // Attach historicalTeacher: exam snapshot if it exists, else course.teacher fallback.
+        foreach ($student->enrollments as $enrollment) {
+            $course = $enrollment->course;
+            if (! $course) {
+                $enrollment->historicalTeacher = null;
+                continue;
+            }
+
+            $lvl = (int) ($course->year_level ?? 0);
+            $sem = (int) ($course->semester   ?? 0);
+
+            $acadYearId = $yrAcadYearMap[$lvl][$sem]
+                ?? $yrAcadYearMap[$lvl][0]
+                ?? $yrAcadYearMap[0][$sem]
+                ?? $yrAcadYearMap[0][0]
+                ?? null;
+
+            $key = $course->id . ':' . $acadYearId;
+
+            $enrollment->historicalTeacher = ($acadYearId && isset($historicalTeacherMap[$key]))
+                ? $historicalTeacherMap[$key]       // Priority 1: exam snapshot (immutable)
+                : $course->teacher;                 // Priority 2: current course assignment
+        }
 
         return view('admin.students.show', compact(
             'student', 'yearRecords', 'courses', 'academicYears', 'yearLevels', 'enrolledCourseIds'

@@ -4,16 +4,35 @@ namespace App\Services;
 
 use App\Events\NewEmailReceived;
 use App\Models\InboxEmail;
+use App\Models\InboxSyncState;
 use App\Models\User;
 use Webklex\IMAP\Facades\Client;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 /**
  * InboxSyncService
  *
- * Fetches the most-recent N messages from the configured INBOX via IMAP
- * (Webklex Laravel-IMAP 6.2), resolves conversation threads, persists new
- * messages to inbox_emails, and broadcasts NewEmailReceived for each import.
+ * Fetches new messages from the configured INBOX via IMAP (Webklex
+ * Laravel-IMAP 6.2) using a UID-based incremental cursor, resolves
+ * conversation threads, persists new messages to inbox_emails, and
+ * broadcasts NewEmailReceived for each import.
+ *
+ * Sync strategy — UID cursor
+ * --------------------------
+ * The last successfully persisted IMAP UID is stored in inbox_sync_state.
+ * Each sync fetches only messages with UID > last_uid, so no email is ever
+ * missed regardless of inbox volume.  Messages are processed in ascending
+ * UID order; the checkpoint is advanced one message at a time.  If a
+ * message fails, the loop stops immediately — the checkpoint stays at the
+ * last good UID so the failed message is retried on the next run.
+ *
+ * Concurrency lock
+ * ----------------
+ * A Cache atomic lock ('imap_inbox_sync') is acquired at the top of sync().
+ * Both the scheduled inbox:sync command and the manual InboxSyncJob enter
+ * through sync(), so only one execution can run at any time.  A second
+ * caller returns immediately with a "Sync already running" result.
  *
  * Thread resolution algorithm
  * ---------------------------
@@ -30,12 +49,6 @@ use Illuminate\Support\Facades\Log;
  *  references — Raw RFC 2822 References header, stored verbatim for future
  *               ancestry reconstruction.
  *
- * Performance
- * -----------
- *  - setFetchBody(false) / limit() — envelope-only listing phase.
- *  - parseBody() only for messages that pass dedup.
- *  - Thread lookups are single indexed queries on message_id / thread_id.
- *
  * Nothing changed outside this service
  * -------------------------------------
  *  - SMTP, OTP, SendEmailJob, Academic Scheduler — untouched.
@@ -43,15 +56,23 @@ use Illuminate\Support\Facades\Log;
  */
 class InboxSyncService
 {
-    /** Maximum messages fetched per sync. Override via IMAP_SYNC_LIMIT in .env. */
-    private int $fetchLimit;
+    /**
+     * Atomic lock key — shared between the scheduled command and the
+     * manual InboxSyncJob so only one sync runs at a time.
+     */
+    private const LOCK_KEY     = 'imap_inbox_sync';
+
+    /**
+     * Lock TTL in seconds.  Acts as a dead-man's switch: if the process
+     * dies without releasing the lock it auto-expires, allowing the next
+     * scheduled run to proceed.  Must be longer than the worst-case sync
+     * duration (InboxSyncJob timeout = 120 s).
+     */
+    private const LOCK_TTL     = 150;
 
     public function __construct()
     {
-        $this->fetchLimit = (int) env('IMAP_SYNC_LIMIT', 20);
-        if ($this->fetchLimit < 1 || $this->fetchLimit > 200) {
-            $this->fetchLimit = 20;
-        }
+        // No fetch-limit property needed — UID-based fetch has no artificial cap.
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -59,43 +80,94 @@ class InboxSyncService
     // ──────────────────────────────────────────────────────────────────────
 
     /**
-     * Connect to IMAP, fetch latest messages, persist new ones with threads.
+     * Connect to IMAP, fetch all messages with UID > last checkpoint,
+     * persist new ones with threads, and advance the checkpoint.
+     *
+     * Returns a result summary consumed by both SyncInbox (Artisan) and
+     * InboxSyncJob (queue) — the callers are unchanged.
      *
      * @return array{imported: int, skipped: int, errors: int, message: string}
      */
     public function sync(): array
     {
+        // ── Concurrency lock ──────────────────────────────────────────────
+        // Only one sync execution (scheduled or manual) may run at a time.
+        $lock = Cache::lock(self::LOCK_KEY, self::LOCK_TTL);
+
+        if (!$lock->get()) {
+            Log::info('InboxSyncService: sync already running — skipping this call.');
+            return [
+                'imported' => 0,
+                'skipped'  => 0,
+                'errors'   => 0,
+                'message'  => 'Sync already running — skipped.',
+            ];
+        }
+
         $imported = 0;
         $skipped  = 0;
         $errors   = 0;
 
         try {
+            // ── Read checkpoint ───────────────────────────────────────────
+            $lastUid = InboxSyncState::readLastUid();
+
+            // ── IMAP connection ───────────────────────────────────────────
             $client = Client::account('default');
             $client->connect();
 
             $folder = $client->getFolderByName('INBOX');
             if (!$folder) {
                 $client->disconnect();
+                $lock->release();
                 return ['imported' => 0, 'skipped' => 0, 'errors' => 1,
                         'message'  => 'INBOX folder not found.'];
             }
 
-            // Envelope-only listing — body download deferred to processMessage()
+            // ── UID-based incremental fetch ───────────────────────────────
+            // Fetch only messages with UID > last checkpoint, oldest first.
+            // setFetchBody(false) keeps this phase envelope-only; parseBody()
+            // is called only for messages that pass dedup (in processMessage).
             $messages = $folder->messages()
-                ->all()
                 ->setFetchBody(false)
                 ->setFetchFlags(false)
-                ->setFetchOrder('desc')
-                ->limit($this->fetchLimit)
-                ->get();
+                ->setFetchOrder('asc')
+                ->getByUidGreater($lastUid);
 
+            // ── Process each new message ──────────────────────────────────
+            // Ascending UID order means we process oldest-new first.
+            // The checkpoint is advanced after EACH successful persist.
+            // On the first failure the loop breaks — the failed UID will be
+            // retried on the next sync run.
             foreach ($messages as $message) {
+                $uid = (int) $message->uid;
+
                 try {
                     $result = $this->processMessage($message);
-                    $result === 'imported' ? $imported++ : $skipped++;
+
+                    if ($result === 'imported') {
+                        $imported++;
+                    } else {
+                        $skipped++;
+                    }
+
+                    // Advance checkpoint regardless of imported/skipped.
+                    // A "skipped" message (already in DB) still counts as
+                    // processed — its UID must not be re-fetched next run.
+                    if ($uid > $lastUid) {
+                        InboxSyncState::saveLastUid($uid);
+                        $lastUid = $uid;
+                    }
+
                 } catch (\Throwable $e) {
                     $errors++;
-                    Log::warning('InboxSyncService: failed to process message — ' . $e->getMessage());
+                    Log::warning(
+                        "InboxSyncService: failed to process UID {$uid} — " . $e->getMessage()
+                    );
+                    // Stop the batch immediately.  Checkpoint stays at $lastUid
+                    // (the last successfully processed UID), so this UID is
+                    // retried on the next scheduler run.
+                    break;
                 }
             }
 
@@ -103,10 +175,16 @@ class InboxSyncService
 
         } catch (\Throwable $e) {
             Log::error('InboxSyncService::sync() — ' . $e->getMessage());
-            return ['imported' => $imported, 'skipped' => $skipped,
-                    'errors'   => $errors + 1,
-                    'message'  => 'IMAP connection error: ' . $e->getMessage()];
+            $lock->release();
+            return [
+                'imported' => $imported,
+                'skipped'  => $skipped,
+                'errors'   => $errors + 1,
+                'message'  => 'IMAP connection error: ' . $e->getMessage(),
+            ];
         }
+
+        $lock->release();
 
         return [
             'imported' => $imported,

@@ -28,12 +28,23 @@ class ResultController extends Controller
         // ── Load all academic years ───────────────────────────────────────
         $academicYears = AcademicYear::orderByDesc('start_year')->get();
 
-        // ── Load only courses assigned to this teacher that have
-        //    at least one published/closed exam ──────────────────────────
+        // ── Load courses that have at least one published/closed exam
+        //    created by this teacher (keyed off exams.teacher_id, NOT
+        //    courses.teacher_id).
+        //
+        //    WHY: courses.teacher_id is mutable — admin can reassign a course
+        //    to a new teacher for a new academic year. If we filter by
+        //    courses.teacher_id, the original teacher loses visibility of all
+        //    historical results the moment the course is reassigned.
+        //
+        //    exams.teacher_id is an immutable snapshot set at exam-creation
+        //    time. Filtering through it ensures a teacher always sees every
+        //    exam they authored, regardless of later course reassignments.
         $courses = Course::with([
             'academicYear',
             'enrollments',
             'exams' => fn($q) => $q->whereIn('status', ['published', 'closed'])
+                ->where('teacher_id', $teacherId)   // ← historical snapshot filter
                 ->with([
                     'latestSchedule',
                     'attempts' => fn($a) => $a->with([
@@ -42,8 +53,10 @@ class ResultController extends Controller
                     'results' => fn($r) => $r->with('student'),
                 ]),
         ])
-        ->where('teacher_id', $teacherId)
-        ->whereHas('exams', fn($q) => $q->whereIn('status', ['published', 'closed']))
+        ->whereHas('exams', fn($q) => $q
+            ->whereIn('status', ['published', 'closed'])
+            ->where('teacher_id', $teacherId)       // ← same snapshot filter on the outer whereHas
+        )
         ->get();
 
         // ── Collect all enrolled student IDs across the teacher's courses ─

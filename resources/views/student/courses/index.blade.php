@@ -115,12 +115,12 @@
                     <i class="bi bi-tag me-1"></i>{{ $e->course->code }}
                 </div>
 
-                @if($e->course->teacher)
+                @if($e->historicalTeacher)
                 <div class="d-flex align-items-center gap-2 mt-auto pt-2 border-top">
                     <div style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#1e1b6e,#3730a3);color:#fff;display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:700;flex-shrink:0">
-                        {{ strtoupper(substr($e->course->teacher->name, 0, 1)) }}
+                        {{ strtoupper(substr($e->historicalTeacher->name, 0, 1)) }}
                     </div>
-                    <span style="font-size:0.78rem;color:#6b7280">{{ $e->course->teacher->name }}</span>
+                    <span style="font-size:0.78rem;color:#6b7280">{{ $e->historicalTeacher->name }}</span>
                 </div>
                 @endif
             </div>
