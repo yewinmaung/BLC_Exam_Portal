@@ -130,7 +130,7 @@ class ExamController extends Controller
             'type'                    => 'required|in:mcq,true_false,essay,fill_blank',
             'content'                 => 'required|string',
             'marks'                   => 'required|integer|min:1',
-            'difficulty'              => 'required|in:easy,medium,hard',
+          
             'category_id'             => 'nullable|exists:question_categories,id',
             'answers'                 => 'nullable|array',
             'answers.*.content'       => 'nullable|string',
@@ -175,9 +175,8 @@ class ExamController extends Controller
             'type'              => $data['type'],
             'content_encrypted' => $this->encryption->encrypt($data['content']),
             'marks'             => $data['marks'],
-            'difficulty'        => $data['difficulty'],
-            'category_id'       => $data['category_id'] ?? null,
-            'order'             => $exam->questions()->count() + 1,
+           
+                    'order'             => $exam->questions()->count() + 1,
         ]);
 
         if ($data['type'] === 'fill_blank') {
@@ -228,8 +227,7 @@ class ExamController extends Controller
             'type'                    => 'required|in:mcq,true_false,essay,fill_blank',
             'content'                 => 'required|string',
             'marks'                   => 'required|integer|min:1',
-            'difficulty'              => 'required|in:easy,medium,hard',
-            'category_id'             => 'nullable|exists:question_categories,id',
+           'category_id'             => 'nullable|exists:question_categories,id',
             'answers'                 => 'nullable|array',
             'answers.*.content'       => 'nullable|string',
             'answers.*.is_correct'    => 'nullable',
@@ -267,7 +265,7 @@ class ExamController extends Controller
             'type'              => $data['type'],
             'content_encrypted' => $this->encryption->encrypt($data['content']),
             'marks'             => $data['marks'],
-            'difficulty'        => $data['difficulty'],
+           
             'category_id'       => $data['category_id'] ?? null,
         ]);
 

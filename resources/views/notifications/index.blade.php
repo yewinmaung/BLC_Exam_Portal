@@ -32,21 +32,21 @@ $typeConfig = [
     'question_added' => ['icon' => 'bi-patch-plus-fill',        'bg' => '#f3e8ff', 'color' => '#7c3aed'],
     'default'        => ['icon' => 'bi-bell-fill',              'bg' => '#f1f5f9', 'color' => '#64748b'],
 ];
-$unreadCount = $notifications->where('is_read', false)->count();
+// $totalUnread is passed from NotificationController::index() — true count across all pages.
 @endphp
 
 {{-- Header --}}
 <div class="page-header mb-4">
     <div class="d-flex align-items-center gap-3">
         <h4 class="mb-0">Notifications</h4>
-        @if($unreadCount > 0)
+        @if($totalUnread > 0)
         <span class="badge rounded-pill"
               style="background:#dc2626;color:#fff;font-size:0.75rem;padding:0.3em 0.7em">
-            {{ $unreadCount }} unread
+            {{ $totalUnread }} unread
         </span>
         @endif
     </div>
-    @if($unreadCount > 0)
+    @if($totalUnread > 0)
     <form method="POST" action="{{ route('notifications.read-all') }}">@csrf
         <button class="btn btn-outline-primary btn-sm">
             <i class="bi bi-check2-all me-1"></i> Mark all as read
@@ -87,10 +87,11 @@ $unreadCount = $notifications->where('is_read', false)->count();
             {{-- Actions --}}
             <div class="notif-row-actions">
                 @if($n->link)
-                <!-- <a href="{{ $n->link }}"
-                   class="btn btn-sm btn-outline-primary">
+                <a href="{{ $n->link }}"
+                   class="btn btn-sm btn-outline-primary"
+                   title="Go to related page">
                     <i class="bi bi-arrow-right"></i>
-                </a> -->
+                </a>
                 @endif
                 @if(!$n->is_read)
                 <form method="POST" action="{{ route('notifications.read', $n) }}">@csrf

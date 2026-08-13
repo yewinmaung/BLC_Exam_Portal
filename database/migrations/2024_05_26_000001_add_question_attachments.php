@@ -11,11 +11,11 @@ return new class extends Migration
     {
         DB::statement("ALTER TABLE questions MODIFY COLUMN type ENUM('mcq','true_false','essay','file_upload','document') NOT NULL");
 
-        Schema::table('questions', function (Blueprint $table) {
-            $table->string('attachment_path')->nullable()->after('content_encrypted');
-            $table->string('attachment_name')->nullable()->after('attachment_path');
-            $table->string('attachment_mime')->nullable()->after('attachment_name');
-        });
+        // Schema::table('questions', function (Blueprint $table) {
+        //     $table->string('attachment_path')->nullable()->after('content_encrypted');
+        //     $table->string('attachment_name')->nullable()->after('attachment_path');
+        //     $table->string('attachment_mime')->nullable()->after('attachment_name');
+        // });
     }
 
     public function down(): void

@@ -156,10 +156,10 @@
        href="{{ route('admin.email.logs') }}">
         <i class="bi bi-journal-text"></i> Logs
     </a>
-    <a class="nav-link {{ request()->routeIs('admin.email.smtp*') ? 'active' : '' }}"
+    <!-- <a class="nav-link {{ request()->routeIs('admin.email.smtp*') ? 'active' : '' }}"
        href="{{ route('admin.email.smtp') }}">
         <i class="bi bi-gear"></i> SMTP
-    </a>
+    </a> -->
 
 </nav>
 

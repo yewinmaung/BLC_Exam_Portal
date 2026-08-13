@@ -22,6 +22,39 @@
     margin: 0 auto 1rem;
     box-shadow: 0 4px 16px rgba(11,42,91,0.18);
 }
+
+/* ── Avatar wrap (shared with profile.js) ── */
+.avatar-wrap { position: relative; display: inline-block; margin-bottom: 1rem; }
+.avatar-ring {
+    width: 80px; height: 80px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--blc-navy, #0b2a5b), var(--blc-navy-2, #1a3d7c));
+    overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 16px rgba(11,42,91,0.18);
+}
+.avatar-ring img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.avatar-initial {
+    font-size: 2rem; font-weight: 800; color: #fff; user-select: none;
+}
+.avatar-edit-btn {
+    position: absolute; bottom: 2px; right: 2px;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--blc-royal, #2d27a0); color: #fff;
+    border: 2px solid #fff;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; font-size: 0.72rem;
+    transition: background 0.15s;
+}
+.avatar-edit-btn:hover { background: #1e1b6e; }
+
+/* Spinner */
+.spinner-sm { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; display: inline-block; vertical-align: middle; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Inline alert */
+.inline-alert { border-radius: 8px; padding: 0.55rem 0.85rem; font-size: 0.8rem; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.4rem; }
+.inline-alert.success { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+.inline-alert.error   { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
 .stat-box {
     text-align: center; padding: 0.75rem 0.5rem;
     border-radius: 10px; background: #f8faff;
@@ -102,10 +135,8 @@
     padding: 2px 8px; border-radius: 20px;
     display: inline-block;
 }
-.course-card-meta {
-    font-size: 0.75rem; color: #6b7280;
-    margin-top: 0.4rem;
-}
+/* ── Cropper modal open state (toggled by profile.js) ── */
+#cropperOverlay.open { display: flex !important; }
 </style>
 @endpush
 
@@ -121,9 +152,22 @@
                 <i class="bi bi-person-circle"></i> Profile
             </div>
             <div class="card-body text-center p-4">
-                <div class="teacher-profile-avatar">
-                    {{ strtoupper(substr($teacher->name, 0, 1)) }}
+                <div class="avatar-wrap" id="avatarWrap" style="margin:0 auto 1rem">
+                    <div class="avatar-ring" id="avatarRing">
+                        @if($teacher->profile_photo)
+                            <img id="avatarImg" src="{{ $teacher->profilePhotoUrl() }}" alt="Profile Photo">
+                        @else
+                            <span class="avatar-initial" id="avatarInitial">{{ strtoupper(substr($teacher->name, 0, 1)) }}</span>
+                            <img id="avatarImg" src="" alt="" style="display:none">
+                        @endif
+                    </div>
+                    <button type="button" class="avatar-edit-btn" id="avatarEditBtn" title="Change photo">
+                        <i class="bi bi-camera-fill"></i>
+                    </button>
                 </div>
+                {{-- Hidden file input --}}
+                <input type="file" id="photoFileInput" accept="image/jpeg,image/jpg,image/png,image/webp" style="display:none">
+                <div id="photoStatus" class="mb-2" style="min-height:24px"></div>
                 <h5 class="mb-1 fw-800" style="color:var(--blc-navy,#0b2a5b)">{{ $teacher->name }}</h5>
                 <p class="text-muted small mb-2">{{ $teacher->email }}</p>
                 @if($teacher->phone)
@@ -303,13 +347,63 @@
 </div>
 @endsection
 
+{{-- ── Photo Cropper Modal (required by profile.js) ── --}}
+<div id="cropperOverlay"
+     style="position:fixed;inset:0;z-index:9999;background:rgba(7,29,64,0.88);
+            display:none;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:20px;padding:1.5rem;width:92%;max-width:500px;
+                box-shadow:0 32px 80px rgba(0,0,0,0.4);">
+        <div style="font-size:1rem;font-weight:800;color:#1a2540;margin-bottom:1rem">
+            <i class="bi bi-crop me-2"></i>Adjust Photo
+        </div>
+
+        <div id="cropperStage"
+             style="width:100%;aspect-ratio:1/1;overflow:hidden;border-radius:12px;
+                    background:#111;position:relative;cursor:grab;
+                    user-select:none;touch-action:none;">
+            <img id="cropperImg" draggable="false" alt=""
+                 style="position:absolute;transform-origin:0 0;pointer-events:none;">
+            {{-- Circle overlay via radial-gradient pseudo-element --}}
+            <div style="position:absolute;inset:0;pointer-events:none;border-radius:12px;
+                        background:radial-gradient(circle at center,transparent 40%,rgba(0,0,0,0.55) 40.1%)">
+            </div>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-top:0.75rem">
+            <i class="bi bi-zoom-out" style="color:#9ca3af;font-size:0.9rem"></i>
+            <input type="range" id="zoomSlider" min="0.1" max="4" step="0.01" value="1"
+                   style="flex:1;accent-color:var(--blc-royal,#2d27a0)">
+            <i class="bi bi-zoom-in" style="color:#9ca3af;font-size:0.9rem"></i>
+        </div>
+
+        <div id="cropperMsg"
+             style="min-height:24px;font-size:0.79rem;color:#9ca3af;margin-top:4px;text-align:center">
+        </div>
+
+        <div style="display:flex;gap:0.75rem;margin-top:1rem">
+            <button type="button" id="btnCropCancel"
+                    style="flex:1;padding:0.65rem;border-radius:10px;font-weight:700;
+                           font-size:0.88rem;cursor:pointer;border:none;
+                           background:#f1f5f9;color:#374151">
+                Cancel
+            </button>
+            <button type="button" id="btnCropSave"
+                    style="flex:1;padding:0.65rem;border-radius:10px;font-weight:700;
+                           font-size:0.88rem;cursor:pointer;border:none;
+                           background:var(--blc-royal,#2d27a0);color:#fff">
+                <i class="bi bi-check2 me-1"></i>Save Photo
+            </button>
+        </div>
+    </div>
+</div>
+
 @push('scripts')
 <script>
 window.PROFILE_CONFIG = {
     photoUrl:    "{{ route('profile.photo') }}",
     passwordUrl: "{{ route('profile.password') }}",
     csrf:        "{{ csrf_token() }}",
-    hasPhoto:    false,
+    hasPhoto:    {{ $teacher->profile_photo ? 'true' : 'false' }},
 };
 
 function togglePw(inputId, iconId) {

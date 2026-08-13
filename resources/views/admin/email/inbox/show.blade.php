@@ -32,7 +32,8 @@
 @endpush
 
 @section('content')
-<div class="thread-wrap">
+<div class="d-flex justify-content-center">
+    <div class="thread-wrap">
 
     {{-- ── Thread header ── --}}
     <div class="d-flex align-items-start justify-content-between mb-3 gap-3">
@@ -52,7 +53,7 @@
             <a href="{{ route('admin.email.inbox') }}" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-arrow-left me-1"></i>Inbox
             </a>
-            @if($inboxEmail->status !== 'archived')
+            <!-- @if($inboxEmail->status !== 'archived')
             <form action="{{ route('admin.email.inbox.archive', $inboxEmail) }}" method="POST" class="d-inline"
                   onsubmit="return confirm('Archive this thread?')">
                 @csrf @method('DELETE')
@@ -60,7 +61,7 @@
                     <i class="bi bi-archive me-1"></i>Archive
                 </button>
             </form>
-            @endif
+            @endif -->
         </div>
     </div>
 
@@ -182,6 +183,7 @@
     </div>
     @endif
 
+</div>
 </div>
 @endsection
 

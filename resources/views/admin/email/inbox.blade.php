@@ -24,7 +24,7 @@
      style="display:none!important;background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af">
     <i class="bi bi-envelope-fill me-2"></i>
     <span id="newEmailText">New email received.</span>
-    <a href="{{ route('admin.email.inbox') }}" class="alert-link ms-2">Refresh inbox</a>
+    <a href="#" class="alert-link ms-2" onclick="event.preventDefault()">Inbox updated.</a>
     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
 </div>
 
@@ -69,7 +69,7 @@
             </span>
         </span>
         <div class="d-flex align-items-center gap-2">
-            <span class="badge" style="background:#eef2ff;color:#3730a3">{{ $emails->total() }} threads</span>
+            <span id="inboxTotalBadge" class="badge" style="background:#eef2ff;color:#3730a3">{{ $emails->total() }} threads</span>
             <form method="POST" action="{{ route('admin.email.inbox.sync') }}" class="mb-0" id="syncForm">
                 @csrf
                 <button type="submit" class="btn btn-sm btn-primary" id="syncBtn">
@@ -179,6 +179,7 @@
         </div>
 
         @if($emails->hasPages())
+        <div id="inboxPaginationWrap">
         <div class="px-3 py-2 border-top d-flex align-items-center justify-content-between flex-wrap gap-2"
              style="background:#fafbff">
             <span style="font-size:0.78rem;color:#6b7280">
@@ -187,6 +188,9 @@
             </span>
             {{ $emails->withQueryString()->links() }}
         </div>
+        </div>
+        @else
+        <div id="inboxPaginationWrap"></div>
         @endif
     </div>
 </div>
@@ -198,26 +202,152 @@
 (function () {
     'use strict';
 
-    // ── Sync button spinner ──────────────────────────────────────────────
-    document.getElementById('syncForm')?.addEventListener('submit', function () {
-        const btn   = document.getElementById('syncBtn');
-        const icon  = document.getElementById('syncIcon');
-        const label = document.getElementById('syncLabel');
-        if (btn) {
-            btn.disabled      = true;
-            icon.className    = 'spinner-border spinner-border-sm me-1';
-            label.textContent = 'Syncing…';
-        }
-    });
-
-    // ── Real-time polling fallback ────────────────────────────────────────
-    // Polls GET /admin/email/inbox/poll every 30 s.
-    // Shows a "new email" banner when a new message arrives.
-    // Works with any BROADCAST_DRIVER including 'log'.
+    // ── URLs (server-rendered, safe) ─────────────────────────────────────
+    const SYNC_URL  = "{{ route('admin.email.inbox.sync') }}";
     const POLL_URL  = "{{ route('admin.email.inbox.poll') }}";
-    const POLL_MS   = 30000;  // 30 seconds
-    let   lastSince = new Date().toISOString();
+    const ROWS_URL  = "{{ route('admin.email.inbox.rows') }}";
+    const CSRF      = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
 
+    // Polling interval: 12 seconds
+    const POLL_MS   = 12000;
+
+    // Track the timestamp of the newest email we know about.
+    // Initialised to "now" so only emails arriving after page load trigger a refresh.
+    let lastSince   = new Date().toISOString();
+
+    // ── Helper: read active filter values from the filter form ───────────
+    function currentParams() {
+        const form   = document.querySelector('form[action*="inbox"]');
+        const params = new URLSearchParams(window.location.search);
+        // Keep page param if present so a mid-page poll doesn't jump to page 1
+        return params.toString();
+    }
+
+    // ── Core: reload the inbox table body in-place ───────────────────────
+    // Fetches rendered HTML from /inbox/rows and swaps tbody + pagination.
+    // No full page reload. No prepend. Row count always matches DB.
+    function refreshTable() {
+        const qs = currentParams();
+        fetch(ROWS_URL + (qs ? '?' + qs : ''), {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin',
+        })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+            if (!data) return;
+
+            // Replace table rows
+            const tbody = document.getElementById('inboxTableBody');
+            if (tbody) tbody.innerHTML = data.rows_html;
+
+            // Replace pagination (or hide if none)
+            const paginationWrap = document.getElementById('inboxPaginationWrap');
+            if (paginationWrap) {
+                paginationWrap.innerHTML = data.pagination_html ?? '';
+            }
+
+            // Update unread badge
+            updateUnreadBadge(data.unread_count ?? 0);
+
+            // Update thread count label
+            const countBadge = document.getElementById('inboxTotalBadge');
+            if (countBadge && data.total !== undefined) {
+                countBadge.textContent = data.total + ' threads';
+            }
+
+            // Advance lastSince to now so the next poll only checks truly new mail
+            lastSince = new Date().toISOString();
+        })
+        .catch(() => { /* network error — silent, will retry on next tick */ });
+    }
+
+    // ── Unread badge helper ───────────────────────────────────────────────
+    function updateUnreadBadge(count) {
+        const badge = document.getElementById('liveUnreadBadge');
+        if (!badge) return;
+        badge.textContent = count + ' unread';
+        badge.classList.toggle('d-none', count === 0);
+    }
+
+    // ── Sync button — AJAX (no full page reload) ─────────────────────────
+    const syncForm  = document.getElementById('syncForm');
+    const syncBtn   = document.getElementById('syncBtn');
+    const syncIcon  = document.getElementById('syncIcon');
+    const syncLabel = document.getElementById('syncLabel');
+
+    if (syncForm) {
+        syncForm.addEventListener('submit', function (e) {
+            e.preventDefault(); // prevent traditional form POST redirect
+
+            // Disable button and show spinner
+            if (syncBtn)   syncBtn.disabled   = true;
+            if (syncIcon)  syncIcon.className  = 'spinner-border spinner-border-sm me-1';
+            if (syncLabel) syncLabel.textContent = 'Syncing…';
+
+            fetch(SYNC_URL, {
+                method:  'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN':     CSRF,
+                    'Accept':           'application/json',
+                },
+                credentials: 'same-origin',
+            })
+            .then(r => r.json().then(d => ({ ok: r.ok, data: d })))
+            .then(({ ok, data }) => {
+                // Re-enable button
+                if (syncBtn)   syncBtn.disabled   = false;
+                if (syncIcon)  syncIcon.className  = 'bi bi-arrow-repeat me-1';
+                if (syncLabel) syncLabel.textContent = 'Sync Inbox';
+
+                // Show result banner
+                showSyncBanner(ok, data.message ?? (ok ? 'Sync complete.' : 'Sync failed.'));
+
+                // Always refresh the table after sync — new emails or not
+                refreshTable();
+            })
+            .catch(() => {
+                if (syncBtn)   syncBtn.disabled   = false;
+                if (syncIcon)  syncIcon.className  = 'bi bi-arrow-repeat me-1';
+                if (syncLabel) syncLabel.textContent = 'Sync Inbox';
+                showSyncBanner(false, 'Network error. Check your connection and try again.');
+            });
+        });
+    }
+
+    // ── Sync result banner ────────────────────────────────────────────────
+    function showSyncBanner(success, msg) {
+        // Reuse newEmailBanner or create a transient alert
+        const banner = document.getElementById('newEmailBanner');
+        const text   = document.getElementById('newEmailText');
+        if (!banner || !text) return;
+
+        banner.className = 'alert alert-dismissible fade show mb-3';
+        banner.style.removeProperty('display');
+
+        if (success) {
+            banner.style.background  = '#f0fdf4';
+            banner.style.border      = '1px solid #bbf7d0';
+            banner.style.color       = '#166534';
+            text.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>' + escHtml(msg);
+        } else {
+            banner.style.background  = '#fef2f2';
+            banner.style.border      = '1px solid #fecaca';
+            banner.style.color       = '#991b1b';
+            text.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i>' + escHtml(msg);
+        }
+
+        // Auto-dismiss after 6 s
+        setTimeout(() => {
+            banner.classList.remove('show');
+            setTimeout(() => banner.style.display = 'none', 200);
+        }, 6000);
+    }
+
+    // ── Polling loop: lightweight check for new mail ─────────────────────
+    // Only refreshes the table when new emails exist since lastSince.
+    // This keeps poll requests cheap (no HTML rendering) and reserves the
+    // heavier refreshTable() call for when it's actually needed.
     function pollInbox() {
         fetch(POLL_URL + '?since=' + encodeURIComponent(lastSince), {
             headers: { 'X-Requested-With': 'XMLHttpRequest' },
@@ -227,57 +357,29 @@
         .then(data => {
             if (!data) return;
 
-            // Update unread badge
-            const badge = document.getElementById('liveUnreadBadge');
-            if (badge) {
-                badge.textContent = data.unread_count + ' unread';
-                badge.classList.toggle('d-none', data.unread_count === 0);
-            }
+            // Always keep unread badge current
+            updateUnreadBadge(data.unread_count ?? 0);
 
             if (data.emails && data.emails.length > 0) {
-                lastSince = data.emails[0].received_at; // newest
+                // New emails arrived since last check — reload the full table
+                // so row count matches DB exactly. No prepend = no duplicates.
+                refreshTable();
 
-                // Show banner
+                // Show "new email" banner
                 const banner = document.getElementById('newEmailBanner');
                 const text   = document.getElementById('newEmailText');
                 if (banner && text) {
                     const count = data.emails.length;
-                    text.textContent = count === 1
-                        ? 'New email from ' + data.emails[0].display_name + ': ' + data.emails[0].subject
-                        : count + ' new emails received.';
+                    banner.className = 'alert alert-dismissible fade show mb-3';
                     banner.style.removeProperty('display');
-                    banner.classList.add('show');
-                }
-
-                // Prepend new rows to table
-                const tbody  = document.getElementById('inboxTableBody');
-                const empty  = document.getElementById('emptyRow');
-                if (tbody && empty) empty.remove();
-
-                if (tbody) {
-                    data.emails.forEach(function (e) {
-                        const tr = document.createElement('tr');
-                        tr.style.background = '#f0f4ff';
-                        tr.innerHTML = `
-                          <td style="padding:0.7rem 1rem">
-                            <div style="font-weight:700;color:#111827">${escHtml(e.display_name)}</div>
-                            <div style="font-size:0.72rem;color:#9ca3af">${escHtml(e.from_email)}</div>
-                          </td>
-                          <td style="padding:0.7rem 0.75rem;max-width:300px">
-                            <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#2563eb;margin-right:5px;vertical-align:middle"></span>
-                            <a href="${e.show_url}" style="font-weight:700;color:#374151">${escHtml(e.subject)}</a>
-                          </td>
-                          <td style="padding:0.7rem 0.75rem">
-                            <span style="font-size:0.7rem;font-weight:700;padding:3px 8px;border-radius:5px;background:#dbeafe;color:#1d4ed8">Unread</span>
-                          </td>
-                          <td style="padding:0.7rem 0.75rem;color:#9ca3af;font-size:0.78rem">${escHtml(e.received_fmt)}</td>
-                          <td style="padding:0.7rem 0.75rem">
-                            <a href="${e.show_url}" class="btn btn-sm btn-outline-primary" title="Open">
-                              <i class="bi bi-envelope-open"></i>
-                            </a>
-                          </td>`;
-                        tbody.insertBefore(tr, tbody.firstChild);
-                    });
+                    banner.style.background = '#eff6ff';
+                    banner.style.border     = '1px solid #bfdbfe';
+                    banner.style.color      = '#1e40af';
+                    text.innerHTML = '<i class="bi bi-envelope-fill me-1"></i>' + escHtml(
+                        count === 1
+                            ? 'New email from ' + data.emails[0].display_name + ': ' + data.emails[0].subject
+                            : count + ' new emails received.'
+                    );
                 }
             }
         })
@@ -292,9 +394,10 @@
             .replace(/"/g, '&quot;');
     }
 
-    // Start polling after initial load
+    // Start polling loop — first tick after POLL_MS, then repeating.
     setTimeout(pollInbox, POLL_MS);
     setInterval(pollInbox, POLL_MS);
+
 })();
 </script>
 @endpush

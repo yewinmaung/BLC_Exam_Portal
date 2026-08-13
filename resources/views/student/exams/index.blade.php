@@ -70,10 +70,10 @@
                                When it hits zero, reload the page so the card reflects the
                                new state (attempt will have been auto-submitted by the server).
                         --}}
-                        @if($activeAttempt->disconnected_at !== null)
                         @php
                             $recoveryLimit    = (int) config('exam_security.recovery_time_limit', 600);
-                            $recoveryDeadline = $activeAttempt->disconnected_at->copy()->addSeconds($recoveryLimit);
+                            $disconnectedBase = $activeAttempt->disconnected_at ?? now();
+                            $recoveryDeadline = $disconnectedBase->copy()->addSeconds($recoveryLimit);
                         @endphp
                         <span class="small"
                               id="recovery-badge-{{ $e->id }}"
@@ -85,8 +85,6 @@
                             <i class="bi bi-wifi-off me-1"></i>
                             <span class="recovery-value">--:--</span>
                         </span>
-                        @endif
-                        {{-- disconnected_at === null: active session — no badge shown --}}
                         @else
                         <span class="text-muted small"><i class="bi bi-clock me-1"></i>{{ $schedule->duration_minutes }}min</span>
                         @endif
@@ -127,11 +125,17 @@
 
                     @elseif($activeAttempt)
                     {{-- Student is currently in_progress --}}
-                    @if($activeAttempt->disconnected_at !== null)
+                    {{--
+                        The exam list page is never shown while a student is actively
+                        inside the exam (they would be on /take). Any in_progress attempt
+                        visible here means the student has navigated away or disconnected.
+                        Always show Reconnect/Finalize — never "Continue Exam".
+                    --}}
                     @php
                         $recoveryLimit    = (int) config('exam_security.recovery_time_limit', 600);
-                        $recoveryDeadline = $activeAttempt->disconnected_at->copy()->addSeconds($recoveryLimit);
-                        $inRecoveryWindow = $activeAttempt->canAutoRecover();
+                        $disconnectedBase = $activeAttempt->disconnected_at ?? now();
+                        $recoveryDeadline = $disconnectedBase->copy()->addSeconds($recoveryLimit);
+                        $inRecoveryWindow = now()->lt($recoveryDeadline) && now()->lt($activeAttempt->expires_at);
                     @endphp
                     <span id="action-btn-{{ $e->id }}">
                         @if($inRecoveryWindow)
@@ -157,13 +161,6 @@
                         </a>
                         @endif
                     </span>
-                    @else
-                    <a href="{{ route('student.exam.take', $activeAttempt) }}"
-                       class="btn btn-sm btn-warning"
-                       style="background:#d4a51c;border:none;color:#fff;font-weight:700">
-                        Continue Exam <i class="bi bi-play-fill ms-1"></i>
-                    </a>
-                    @endif
 
                     @elseif($finalizedAttempt)
                     {{--

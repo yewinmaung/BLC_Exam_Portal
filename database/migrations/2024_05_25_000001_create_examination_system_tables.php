@@ -86,10 +86,10 @@ return new class extends Migration
         Schema::create('questions', function (Blueprint $table) {
             $table->id();
             $table->foreignId('exam_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('category_id')->nullable()->constrained('question_categories')->nullOnDelete();
+          //  $table->foreignId('category_id')->nullable()->constrained('question_categories')->nullOnDelete();
             $table->enum('type', ['mcq', 'true_false', 'essay', 'file_upload']);
             $table->longText('content_encrypted');
-            $table->enum('difficulty', ['easy', 'medium', 'hard'])->default('medium');
+           // $table->enum('difficulty', ['easy', 'medium', 'hard'])->default('medium');
             $table->unsignedInteger('marks')->default(1);
             $table->unsignedInteger('order')->default(0);
             $table->timestamps();

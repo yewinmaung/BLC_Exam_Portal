@@ -269,14 +269,14 @@
                             <label class="form-label">Marks</label>
                             <input name="marks" type="number" class="form-control" value="1" min="1">
                         </div>
-                        <div class="col-6">
+                        <!-- <div class="col-6">
                             <label class="form-label">Difficulty</label>
                             <select name="difficulty" class="form-select">
                                 <option value="easy">Easy</option>
                                 <option value="medium" selected>Medium</option>
                                 <option value="hard">Hard</option>
                             </select>
-                        </div>
+                        </div> -->
                     </div>
 
                     <!-- <div class="mb-3">

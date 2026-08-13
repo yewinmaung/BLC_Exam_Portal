@@ -61,6 +61,7 @@ Route::middleware(['auth', 'exam.session', 'force.password.change'])->group(func
     // ── Shared profile routes (all authenticated roles) ──
     Route::get('profile', [ProfileController::class, 'show'])->name('profile.show');
     Route::post('profile/photo', [ProfileController::class, 'updatePhoto'])->name('profile.photo');
+    Route::delete('profile/photo', [ProfileController::class, 'deletePhoto'])->name('profile.photo.delete');
     Route::post('profile/password', [ProfileController::class, 'changePassword'])->name('profile.password');
 
     Route::prefix('admin')->middleware('role:admin')->name('admin.')->group(function () {
@@ -97,6 +98,7 @@ Route::middleware(['auth', 'exam.session', 'force.password.change'])->group(func
             Route::get('inbox',                                                     [\App\Http\Controllers\Admin\EmailController::class, 'inbox'])->name('inbox');
             Route::post('inbox/sync',                                               [\App\Http\Controllers\Admin\EmailController::class, 'syncInbox'])->name('inbox.sync');
             Route::get('inbox/poll',                                                [\App\Http\Controllers\Admin\EmailController::class, 'pollInbox'])->name('inbox.poll');
+            Route::get('inbox/rows',                                                [\App\Http\Controllers\Admin\EmailController::class, 'inboxRows'])->name('inbox.rows');
             Route::get('inbox/{inboxEmail}',                                        [\App\Http\Controllers\Admin\EmailController::class, 'showInbox'])->name('inbox.show');
             Route::post('inbox/{inboxEmail}/reply',                                 [\App\Http\Controllers\Admin\EmailController::class, 'replyInbox'])->name('inbox.reply');
             Route::post('inbox/{inboxEmail}/read',                                  [\App\Http\Controllers\Admin\EmailController::class, 'markInboxRead'])->name('inbox.read');

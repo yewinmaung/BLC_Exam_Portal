@@ -334,6 +334,57 @@ class EmailController extends Controller
     }
 
     /**
+     * Returns rendered inbox table rows + pagination + counts as JSON.
+     * Called by the AJAX auto-refresh to replace the table body in-place,
+     * preventing duplicate rows and ensuring the displayed count matches DB.
+     *
+     * GET /admin/email/inbox/rows?page=<n>&search=<s>&status=<s>
+     */
+    public function inboxRows(Request $request)
+    {
+        $query = \App\Models\InboxEmail::query()
+            ->select('inbox_emails.*')
+            ->when($request->filled('search'), function ($q) use ($request) {
+                $s = $request->input('search');
+                $q->where(function ($q2) use ($s) {
+                    $q2->where('from_email', 'like', '%'.$s.'%')
+                       ->orWhere('from_name',  'like', '%'.$s.'%')
+                       ->orWhere('subject',    'like', '%'.$s.'%');
+                });
+            })
+            ->when($request->filled('status'), fn ($q) =>
+                $q->where('status', $request->input('status'))
+            )
+            ->whereNull('parent_id')
+            ->orderByDesc('received_at');
+
+        $emails      = $query->paginate(25)->withQueryString();
+        $unreadCount = \App\Models\InboxEmail::where('status', 'unread')->count();
+
+        $threadIds    = $emails->pluck('thread_id')->filter()->unique()->values()->toArray();
+        $threadCounts = [];
+        if (!empty($threadIds)) {
+            $threadCounts = \App\Models\InboxEmail::whereIn('thread_id', $threadIds)
+                ->selectRaw('thread_id, COUNT(*) as cnt')
+                ->groupBy('thread_id')
+                ->pluck('cnt', 'thread_id')
+                ->toArray();
+        }
+
+        $rowsHtml       = view('admin.email.inbox-rows', compact('emails', 'threadCounts'))->render();
+        $paginationHtml = $emails->hasPages()
+            ? view('admin.email.inbox-pagination', compact('emails'))->render()
+            : '';
+
+        return response()->json([
+            'rows_html'       => $rowsHtml,
+            'pagination_html' => $paginationHtml,
+            'unread_count'    => $unreadCount,
+            'total'           => $emails->total(),
+        ]);
+    }
+
+    /**
      * Archive an inbox email (soft-archive via status change, no DB delete).
      */
     public function archiveInbox(\App\Models\InboxEmail $inboxEmail)
@@ -380,12 +431,17 @@ HTML;
      * action. The InboxSyncService already limits the fetch to IMAP_SYNC_LIMIT
      * (default 20) messages and skips body download until dedup passes, so
      * the actual wall-clock time is bounded.
+     *
+     * Responds with JSON when called via AJAX (X-Requested-With header), or
+     * redirects when called via a normal form POST.
      */
     public function syncInbox(Request $request)
     {
         // Remove the 60 s wall-clock limit for this admin request only.
         // The InboxSyncService fetch limit (default 20 msgs) keeps this fast.
         @set_time_limit(0);
+
+        $isAjax = $request->ajax() || $request->wantsJson();
 
         $syncService = app(\App\Services\InboxSyncService::class);
 
@@ -398,6 +454,9 @@ HTML;
             );
 
             if ($result['errors'] > 0 && $result['imported'] === 0) {
+                if ($isAjax) {
+                    return response()->json(['ok' => false, 'message' => 'Sync failed: ' . $result['message']], 500);
+                }
                 return redirect()->route('admin.email.inbox')
                     ->withErrors(['error' => 'Sync failed: ' . $result['message']]);
             }
@@ -406,11 +465,18 @@ HTML;
                 ? "{$result['imported']} new email(s) imported. {$result['skipped']} already existed."
                 : "Sync complete — no new emails. ({$result['skipped']} already existed)";
 
+            if ($isAjax) {
+                return response()->json(['ok' => true, 'message' => $msg, 'imported' => $result['imported']]);
+            }
+
             return redirect()->route('admin.email.inbox')
                 ->with('success', $msg);
 
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::error('EmailController::syncInbox — ' . $e->getMessage());
+            if ($isAjax) {
+                return response()->json(['ok' => false, 'message' => 'Sync error: ' . $e->getMessage()], 500);
+            }
             return redirect()->route('admin.email.inbox')
                 ->withErrors(['error' => 'Sync error: ' . $e->getMessage()]);
         }

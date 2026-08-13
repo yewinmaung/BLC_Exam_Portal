@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\Exam;
 use App\Models\ExamAttempt;
 use App\Models\Result;
 
@@ -92,5 +91,14 @@ class GradingService
                 'exam_finished_at'    => $attempt->submitted_at ?? now(),
             ]
         );
+
+        // ── Result notification is NOT dispatched here ────────────────────
+        // The business rule requires notification only AFTER the exam schedule
+        // end time has passed — not at grading time. Students who submit early
+        // must not receive "Result Available" until the entire exam window closes.
+        //
+        // Notifications are dispatched by: results:notify-students Artisan command
+        // which runs every minute and fires after schedule.ends_at < now().
     }
 }
+

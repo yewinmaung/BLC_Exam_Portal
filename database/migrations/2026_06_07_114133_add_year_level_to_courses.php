@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::table('courses', function (Blueprint $table) {
             // year_level: 0 = all years, 1-5 = specific year level
             $table->unsignedTinyInteger('year_level')->default(0)->after('is_active')
-                  ->comment('0=all years, 1=First, 2=Second, 3=Third, 4=Fourth, 5=Final');
+                  ->comment('0=all years, 1=First, 2=Second, 3=Third, 4=Fourth, 5=Fifth');
         });
     }
 

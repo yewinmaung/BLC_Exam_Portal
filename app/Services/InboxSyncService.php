@@ -112,9 +112,15 @@ class InboxSyncService
             // ── Read checkpoint ───────────────────────────────────────────
             $lastUid = InboxSyncState::readLastUid();
 
+            // [DEBUG] Log #2 — checkpoint value read from inbox_sync_state
+            Log::debug("[DEBUG] InboxSyncService: last_uid checkpoint = {$lastUid}");
+
             // ── IMAP connection ───────────────────────────────────────────
             $client = Client::account('default');
             $client->connect();
+
+            // [DEBUG] Log #1 — IMAP connection succeeded
+            Log::debug('[DEBUG] InboxSyncService: IMAP connection established successfully.');
 
             $folder = $client->getFolderByName('INBOX');
             if (!$folder) {
@@ -124,40 +130,112 @@ class InboxSyncService
                         'message'  => 'INBOX folder not found.'];
             }
 
+            // ── Read uidnext from the SELECT response ─────────────────────
+            // openFolder() with force_select=true issues a single IMAP SELECT
+            // command and returns the server's response, which includes uidnext.
+            // This is the only safe way to read uidnext without calling STATUS
+            // or EXAMINE on the already-selected folder — both of which disrupt
+            // the selected-folder session state and corrupt uid_cache.
+            //
+            // uidnext is the next UID the server will assign.  Any UID that
+            // could exist in this folder is therefore < uidnext.
+            // If nextUid (lastUid + 1) >= uidnext, there are literally no
+            // messages on the server with UID >= nextUid — skip the SEARCH.
+            $selectData = $client->openFolder($folder->path, true);
+            $uidNext    = isset($selectData['uidnext']) ? (int) $selectData['uidnext'] : null;
+            $nextUid    = $lastUid + 1;
+
+            Log::debug("[DEBUG-FOLDER] uidnext from SELECT = " . ($uidNext ?? 'unknown') . ", nextUid = {$nextUid}, last_uid = {$lastUid}");
+
+            if ($uidNext !== null && $nextUid >= $uidNext) {
+                // No UIDs can exist on the server above last_uid.
+                // Skip the IMAP SEARCH entirely — avoids the Gmail
+                // "BAD Could not parse command" on an empty range.
+                Log::debug('[DEBUG-FOLDER] No new messages (nextUid >= uidnext). Skipping IMAP search.');
+                $client->disconnect();
+                $lock->release();
+                return [
+                    'imported' => 0,
+                    'skipped'  => 0,
+                    'errors'   => 0,
+                    'message'  => 'Sync complete: 0 imported, 0 already existed, 0 errors.',
+                ];
+            }
+
             // ── UID-based incremental fetch ───────────────────────────────
-            // Fetch only messages with UID > last checkpoint, oldest first.
-            // setFetchBody(false) keeps this phase envelope-only; parseBody()
-            // is called only for messages that pass dedup (in processMessage).
-            $messages = $folder->messages()
-                ->setFetchBody(false)
-                ->setFetchFlags(false)
-                ->setFetchOrder('asc')
-                ->getByUidGreater($lastUid);
+            // ROOT CAUSE of "BAD Could not parse command":
+            // whereUid("231:*")->get() calls generate_query() which checks
+            // is_numeric("231:*") → false → wraps in double-quotes → sends:
+            //   UID SEARCH UID "231:*"
+            // Gmail strictly follows RFC 3501: a sequence-set must be unquoted.
+            // Double-quoting a range is a protocol error → BAD response.
+            //
+            // FIX: bypass WhereQuery entirely.
+            // Call ImapProtocol::search() directly with a pre-built string
+            // that is passed as a single token appended verbatim to the command:
+            //   UID SEARCH UID 231:*    ← no quotes, valid RFC 3501 sequence-set
+            // Then fetch each returned UID individually with getMessageByUid().
+            $connection = $client->getConnection();
+            $searchResp = $connection->search(["UID {$nextUid}:*"]);
+            $newUids    = $searchResp->validatedData();
+
+            Log::debug("[DEBUG] InboxSyncService: UID SEARCH UID {$nextUid}:* returned UIDs = ["
+                . implode(', ', is_array($newUids) ? $newUids : []) . ']');
+
+            if (!is_array($newUids) || empty($newUids)) {
+                Log::debug('[DEBUG] InboxSyncService: no UIDs returned by SEARCH — nothing to process.');
+                $client->disconnect();
+                $lock->release();
+                return [
+                    'imported' => 0,
+                    'skipped'  => 0,
+                    'errors'   => 0,
+                    'message'  => 'Sync complete: 0 imported, 0 already existed, 0 errors.',
+                ];
+            }
+
+            // Sort ascending so we process oldest-new first and advance the
+            // checkpoint in order — matching the previous setFetchOrder('asc') behaviour.
+            sort($newUids);
+
+            $query = $folder->messages()->setFetchBody(false)->setFetchFlags(false);
 
             // ── Process each new message ──────────────────────────────────
             // Ascending UID order means we process oldest-new first.
             // The checkpoint is advanced after EACH successful persist.
             // On the first failure the loop breaks — the failed UID will be
             // retried on the next sync run.
-            foreach ($messages as $message) {
-                $uid = (int) $message->uid;
+            foreach ($newUids as $uid) {
+                $uid = (int) $uid;
 
                 try {
-                    $result = $this->processMessage($message);
+                    $message = $query->getMessageByUid($uid);
+                    $result  = $this->processMessage($message, $uid);
 
                     if ($result === 'imported') {
                         $imported++;
-                    } else {
+                        // ── Advance checkpoint ────────────────────────────
+                        // Only move last_uid forward when InboxEmail::create()
+                        // succeeded.  This is the guarantee: if the row is not
+                        // in inbox_emails, the UID will be retried next run.
+                        if ($uid > $lastUid) {
+                            InboxSyncState::saveLastUid($uid);
+                            $lastUid = $uid;
+                        }
+                    } elseif ($result === 'skipped') {
+                        // Duplicate — already in inbox_emails from a previous
+                        // run.  Safe to advance the checkpoint; the row exists.
                         $skipped++;
+                        if ($uid > $lastUid) {
+                            InboxSyncState::saveLastUid($uid);
+                            $lastUid = $uid;
+                        }
                     }
-
-                    // Advance checkpoint regardless of imported/skipped.
-                    // A "skipped" message (already in DB) still counts as
-                    // processed — its UID must not be re-fetched next run.
-                    if ($uid > $lastUid) {
-                        InboxSyncState::saveLastUid($uid);
-                        $lastUid = $uid;
-                    }
+                    // 'filtered' (non-student sender) — do NOT advance the
+                    // checkpoint.  The UID stays below last_uid so it will be
+                    // re-fetched and re-evaluated on every subsequent sync run.
+                    // Once the sender is added as a student in the users table
+                    // the next sync will pick it up and save it properly.
 
                 } catch (\Throwable $e) {
                     $errors++;
@@ -201,15 +279,40 @@ class InboxSyncService
     /**
      * Process one IMAP message: dedup → body fetch → thread resolve → persist → broadcast.
      *
-     * @return 'imported'|'skipped'
+     * $imapUid is passed explicitly from the sync loop so we can perform a
+     * UID-based dedup check (stored as message_id = "uid:default:INBOX:<uid>")
+     * before doing any IMAP header parsing.  This is the primary guard against
+     * duplicates — it fires even when the RFC Message-ID header is absent or
+     * differs between IMAP sessions.
+     *
+     * Return values:
+     *  'imported'  — message was new and saved to inbox_emails successfully.
+     *  'skipped'   — message already exists in DB (dedup); checkpoint advances.
+     *  'filtered'  — message intentionally ignored (non-student sender, no
+     *                address); checkpoint does NOT advance so it is retried.
+     *
+     * @return 'imported'|'skipped'|'filtered'
      */
-    private function processMessage(\Webklex\PHPIMAP\Message $message): string
+    private function processMessage(\Webklex\PHPIMAP\Message $message, int $imapUid): string
     {
-        // ── Message-ID ────────────────────────────────────────────────────
-        $messageId = $this->extractMessageId($message);
+        // ── Primary dedup: account + folder + UID ─────────────────────────
+        // This is the most reliable uniqueness key for an IMAP message.
+        // We store it in the existing message_id column using a deterministic
+        // prefix so no schema change is needed.
+        // Format: "uid:default:INBOX:<uid>"
+        $uidKey = "uid:default:INBOX:{$imapUid}";
+        if (InboxEmail::where('message_id', $uidKey)->exists()) {
+            Log::debug("[DEBUG] InboxSyncService: Duplicate detected: UID {$imapUid} already exists (uid-key match).");
+            return 'skipped';
+        }
 
-        // ── Fast dedup ────────────────────────────────────────────────────
+        // ── Secondary dedup: RFC 2822 Message-ID header ───────────────────
+        // Kept as a belt-and-suspenders check. Guards against the edge case
+        // where the same email was previously imported without a uid-key (e.g.
+        // imported before this change was deployed).
+        $messageId = $this->extractMessageId($message);
         if ($messageId && InboxEmail::where('message_id', $messageId)->exists()) {
+            Log::debug("[DEBUG] InboxSyncService: Duplicate detected: UID {$imapUid} already exists (message-id header match).");
             return 'skipped';
         }
 
@@ -228,20 +331,21 @@ class InboxSyncService
         }
 
         if (empty($fromEmail)) {
-            return 'skipped';
+            return 'filtered';
+        }
+
+        Log::debug("[DEBUG] InboxSyncService: processing UID {$imapUid} — sender = '{$fromEmail}'.");
+
+        // ── Student-only filter ───────────────────────────────────────────
+        $senderUser = User::where('email', $fromEmail)->first();
+        if (!$senderUser || !$senderUser->isStudent()) {
+            Log::debug("[DEBUG] InboxSyncService: UID {$imapUid} filtered — '{$fromEmail}' is not a registered student.");
+            return 'filtered';
         }
 
         // ── Subject + Date (envelope) ─────────────────────────────────────
         $subject    = $this->safeString($message->getSubject()) ?: '(no subject)';
         $receivedAt = $this->extractDate($message);
-
-        // ── Fallback dedup when Message-ID is absent ──────────────────────
-        if (!$messageId) {
-            $messageId = 'fallback:' . md5($fromEmail . '|' . $subject . '|' . $receivedAt->toDateTimeString());
-            if (InboxEmail::where('message_id', $messageId)->exists()) {
-                return 'skipped';
-            }
-        }
 
         // ── Body (targeted fetch for new messages only) ───────────────────
         $bodyHtml = null;
@@ -249,7 +353,7 @@ class InboxSyncService
 
         try {
             $message->parseBody();
-            $bodies = $message->getBodies();
+            $bodies   = $message->getBodies();
             $bodyHtml = isset($bodies['html']) ? (string) $bodies['html'] : null;
             $bodyText = isset($bodies['text']) ? (string) $bodies['text'] : null;
         } catch (\Throwable $e) {
@@ -261,22 +365,24 @@ class InboxSyncService
         $references = $this->extractReferences($message);
 
         // ── Resolve thread_id and parent_id ───────────────────────────────
-        [$threadId, $parentId] = $this->resolveThread($messageId, $inReplyTo, $references);
-
-        // ── Sender type ───────────────────────────────────────────────────
-        $user       = User::where('email', $fromEmail)->first();
-        $senderType = ($user && $user->isStudent()) ? 'student' : 'external';
+        // Use the RFC Message-ID for threading if available, otherwise fall
+        // back to the uid-key so every message always has a stable thread root.
+        $threadingId = $messageId ?: $uidKey;
+        [$threadId, $parentId] = $this->resolveThread($threadingId, $inReplyTo, $references);
 
         // ── Persist ───────────────────────────────────────────────────────
+        // message_id is stored as the uid-key ("uid:default:INBOX:<uid>") when
+        // no RFC Message-ID header is present.  This ensures the primary dedup
+        // check above will always find the row on subsequent syncs.
         $stored = InboxEmail::create([
             'from_email'  => $fromEmail,
             'from_name'   => $fromName,
-            'sender_type' => $senderType,
-            'user_id'     => $user?->id,
+            'sender_type' => 'student',
+            'user_id'     => $senderUser->id,
             'subject'     => mb_substr($subject, 0, 255),
             'body_html'   => $bodyHtml,
             'body_text'   => $bodyText,
-            'message_id'  => mb_substr($messageId, 0, 255),
+            'message_id'  => mb_substr($messageId ?: $uidKey, 0, 255),
             'in_reply_to' => $inReplyTo  ? mb_substr($inReplyTo,  0, 255) : null,
             'references'  => $references ? mb_substr($references, 0, 2000) : null,
             'thread_id'   => $threadId,
@@ -285,7 +391,9 @@ class InboxSyncService
             'received_at' => $receivedAt,
         ]);
 
-        // ── Broadcast (fires on any driver; UI polls as fallback) ─────────
+        Log::debug("[DEBUG] InboxSyncService: UID {$imapUid} saved to inbox_emails id={$stored->id}.");
+
+        // ── Broadcast ─────────────────────────────────────────────────────
         try {
             event(new NewEmailReceived($stored));
         } catch (\Throwable $e) {

@@ -52,7 +52,7 @@
                 <select name="type" class="form-select" id="qType" required>
                     <option value="mcq"        {{ $question->type === 'mcq'        ? 'selected' : '' }}>Multiple Choice (MCQ)</option>
                     <option value="true_false" {{ $question->type === 'true_false' ? 'selected' : '' }}>True / False</option>
-                    <option value="essay"      {{ $question->type === 'essay'      ? 'selected' : '' }}>Essay (written answer)</option>
+                    <!-- <option value="essay"      {{ $question->type === 'essay'      ? 'selected' : '' }}>Essay (written answer)</option> -->
                     <option value="fill_blank" {{ $question->type === 'fill_blank' ? 'selected' : '' }}>Fill in the Blank</option>
                 </select>
             </div>
@@ -88,14 +88,14 @@
                 <button type="button" class="btn btn-sm btn-outline-secondary w-100" id="addAnswerBtn">
                     <i class="bi bi-plus me-1"></i> Add Choice
                 </button>
-                  <div class="col-6">
+                  <!-- <div class="col-6">
                             <label class="form-label">Difficulty</label>
                             <select name="difficulty" class="form-select">
                                 <option value="easy">Easy</option>
                                 <option value="medium" selected>Medium</option>
                                 <option value="hard">Hard</option>
                             </select>
-                        </div>
+                        </div> -->
             </div>
 
             {{-- Fill in the blank accepted answers --}}

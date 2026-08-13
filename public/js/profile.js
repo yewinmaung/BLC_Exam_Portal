@@ -1,5 +1,5 @@
 /**
- * profile.js — Profile page: photo cropper + password change
+ * profile.js — Profile page: photo cropper + password change + photo removal
  *
  * Reads window.PROFILE_CONFIG (set inline in profile/show.blade.php):
  *   photoUrl, passwordUrl, csrf, hasPhoto
@@ -10,8 +10,12 @@
 (function () {
     'use strict';
 
-    const C = window.PROFILE_CONFIG || {};
+    const C    = window.PROFILE_CONFIG || {};
     const csrf = C.csrf || document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+    // DELETE photo URL: same path as POST photo but with DELETE method.
+    // Derived from photoUrl so no extra Blade config is needed.
+    const DELETE_PHOTO_URL = (C.photoUrl || '/profile/photo').replace(/\/$/, '');
 
     /* ════════════════════════════════════════════════════════════════
        Helpers
@@ -33,15 +37,15 @@
         if (el) el.innerHTML = '';
     }
 
-    async function apiFetch(url, body) {
+    async function apiFetch(url, body, method) {
         const r = await fetch(url, {
-            method:  'POST',
+            method:  method || 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRF-TOKEN': csrf,
                 'Accept':       'application/json',
             },
-            body: JSON.stringify(body),
+            body: body !== undefined ? JSON.stringify(body) : undefined,
         });
         return { ok: r.ok, status: r.status, data: await r.json() };
     }
@@ -73,6 +77,94 @@
     let isDragging = false;
     let dragStartX = 0, dragStartY = 0;
     let dragStartOX = 0, dragStartOY = 0;
+
+    // ── Track whether user currently has a photo ──────────────────────────
+    // Initialised from Blade config; kept in sync by upload/remove actions.
+    let currentlyHasPhoto = !!C.hasPhoto;
+
+    // ── "Remove Photo" button — injected by JS below the camera button ───
+    // Shown only when the user currently has a photo.
+    const removeBtn = document.createElement('button');
+    removeBtn.type      = 'button';
+    removeBtn.id        = 'avatarRemoveBtn';
+    removeBtn.title     = 'Remove photo';
+    removeBtn.innerHTML = '<i class="bi bi-trash3-fill"></i>';
+    removeBtn.style.cssText = [
+        'position:absolute',
+        'bottom:4px',
+        'left:4px',
+        'width:32px',
+        'height:32px',
+        'border-radius:50%',
+        'background:#dc2626',
+        'color:#fff',
+        'border:2px solid #fff',
+        'display:flex',
+        'align-items:center',
+        'justify-content:center',
+        'cursor:pointer',
+        'font-size:0.8rem',
+        'transition:background 0.15s',
+    ].join(';');
+
+    // Insert next to the camera button inside .avatar-wrap
+    const avatarWrap = document.getElementById('avatarWrap');
+    if (avatarWrap) avatarWrap.appendChild(removeBtn);
+
+    // Show/hide the remove button based on whether a photo is set
+    function syncRemoveBtn() {
+        removeBtn.style.display = currentlyHasPhoto ? 'flex' : 'none';
+    }
+    syncRemoveBtn();
+
+    // ── Helpers: switch main avatar between photo and initial ────────────
+
+    function showPhoto(url) {
+        if (avatarInitial) avatarInitial.style.display = 'none';
+        avatarImg.src           = url;
+        avatarImg.style.display = 'block';
+        currentlyHasPhoto       = true;
+        syncRemoveBtn();
+    }
+
+    function showInitial(letter) {
+        // Hide the photo img
+        avatarImg.style.display = 'none';
+        avatarImg.src           = '';
+
+        // Show or restore the initial span
+        if (avatarInitial) {
+            if (letter) avatarInitial.textContent = letter;
+            avatarInitial.style.display = '';  // revert to default (inline)
+        }
+
+        currentlyHasPhoto = false;
+        syncRemoveBtn();
+    }
+
+    // ── Helpers: switch sidebar avatar between photo and initial ─────────
+
+    function sidebarShowPhoto(url) {
+        const el = document.querySelector('.sidebar-user-avatar');
+        if (!el) return;
+        el.innerHTML                = '';
+        el.style.backgroundImage    = `url('${url}')`;
+        el.style.backgroundSize     = 'cover';
+        el.style.backgroundPosition = 'center';
+        el.style.color              = 'transparent';
+    }
+
+    function sidebarShowInitial(letter) {
+        const el = document.querySelector('.sidebar-user-avatar');
+        if (!el) return;
+        // Remove ALL inline background overrides so the CSS class gradient
+        // (background: linear-gradient(...)) takes over immediately — no refresh needed.
+        el.style.removeProperty('background-image');
+        el.style.removeProperty('background-size');
+        el.style.removeProperty('background-position');
+        el.style.removeProperty('color');
+        el.textContent = letter;   // restore the initial letter text node
+    }
 
     // Open file picker
     avatarEditBtn?.addEventListener('click', () => photoInput?.click());
@@ -229,21 +321,13 @@
         cropperMsg.textContent = '';
 
         try {
-            const { ok, data } = await apiFetch(C.photoUrl, { image: dataUri });
+            const { ok, data } = await apiFetch(C.photoUrl, { image: dataUri }, 'POST');
             if (ok && data.success) {
-                // Update avatar in the page WITHOUT reload
-                if (avatarInitial) avatarInitial.style.display = 'none';
-                avatarImg.src   = data.url;
-                avatarImg.style.display = 'block';
+                // ── Update main profile avatar ──────────────────────────
+                showPhoto(data.url);
 
-                // Update sidebar initial too (top of layout)
-                const sidebarAvatar = document.querySelector('.sidebar-user-avatar');
-                if (sidebarAvatar) {
-                    sidebarAvatar.style.backgroundImage = `url('${data.url}')`;
-                    sidebarAvatar.style.backgroundSize  = 'cover';
-                    sidebarAvatar.style.backgroundPosition = 'center';
-                    sidebarAvatar.textContent = '';
-                }
+                // ── Update sidebar avatar ───────────────────────────────
+                sidebarShowPhoto(data.url);
 
                 cropperOverlay.classList.remove('open');
                 showMsg(photoStatus, 'success', 'Profile photo updated successfully.');
@@ -256,6 +340,37 @@
 
         btnCropSave.disabled = false;
         btnCropSave.innerHTML = '<i class="bi bi-check2 me-1"></i>Save Photo';
+    });
+
+    // ── Remove Photo ──────────────────────────────────────────────────────
+    removeBtn.addEventListener('click', async function () {
+        if (!confirm('Remove your profile photo and revert to the default initial?')) return;
+
+        removeBtn.disabled   = true;
+        removeBtn.innerHTML  = '<span class="spinner-sm" style="border-color:rgba(255,255,255,.4);border-top-color:#fff"></span>';
+
+        try {
+            const { ok, data } = await apiFetch(DELETE_PHOTO_URL, undefined, 'DELETE');
+
+            if (ok && data.success) {
+                const letter = data.initial || (avatarInitial?.textContent?.trim()) || '?';
+
+                // ── Reset main profile avatar to initial letter ──────────
+                showInitial(letter);
+
+                // ── Reset sidebar avatar to initial letter ───────────────
+                sidebarShowInitial(letter);
+
+                showMsg(photoStatus, 'success', 'Profile photo removed.');
+            } else {
+                showMsg(photoStatus, 'error', data.error || 'Could not remove photo. Please try again.');
+            }
+        } catch (e) {
+            showMsg(photoStatus, 'error', 'Network error. Please try again.');
+        }
+
+        removeBtn.disabled  = false;
+        removeBtn.innerHTML = '<i class="bi bi-trash3-fill"></i>';
     });
 
     /* ════════════════════════════════════════════════════════════════
@@ -320,7 +435,7 @@
             const { ok, data } = await apiFetch(C.passwordUrl, {
                 password:              pw,
                 password_confirmation: cpw,
-            });
+            }, 'POST');
 
             if (ok && data.success) {
                 const passwordSection = document.querySelector('.section-card-body');

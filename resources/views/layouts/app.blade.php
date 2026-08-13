@@ -224,9 +224,7 @@
                 </div>
             </div>
 
-            <button class="btn btn-sm btn-outline-secondary" id="themeToggle" title="Toggle theme">
-                <i class="bi bi-moon-stars" id="themeIcon"></i>
-            </button>
+            
             <button class="btn btn-sm btn-outline-primary d-md-none" id="sidebarToggle">
                 <i class="bi bi-list"></i>
             </button>
@@ -484,12 +482,17 @@
         }
     });
 
-    // Mark all read
+    // Mark all read — scoped to 'general' category only when called from the dropdown.
+    // The dropdown shows a small recent sample (6 items), not all notifications.
+    // Clearing exam/result/course badges from a partial preview would be misleading.
+    // The index page "Mark all as read" form sends no category and clears everything.
     markAll?.addEventListener('click', function(e) {
         e.stopPropagation();
+        const body = new URLSearchParams({ _token: CSRF, category: 'general' });
         fetch('/notifications/read-all', {
-            method: 'POST',
-            headers: { 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' }
+            method : 'POST',
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
+            body   : body.toString()
         }).then(() => fetchNotifications());
     });
 

@@ -61,18 +61,7 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        // Promotion history (never deleted)
-        Schema::create('promotion_histories', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('student_id')->constrained('users')->cascadeOnDelete();
-            $table->foreignId('from_year_level_id')->constrained('year_levels')->cascadeOnDelete();
-            $table->foreignId('to_year_level_id')->constrained('year_levels')->cascadeOnDelete();
-            $table->foreignId('academic_year_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('promoted_by')->constrained('users')->cascadeOnDelete();
-            $table->text('notes')->nullable();
-            $table->timestamp('promoted_at');
-            $table->timestamps();
-        });
+        
 
         // Certificate log (serial numbers, permanent)
         Schema::create('certificate_logs', function (Blueprint $table) {

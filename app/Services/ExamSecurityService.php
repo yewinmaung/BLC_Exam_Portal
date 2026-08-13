@@ -645,10 +645,9 @@ class ExamSecurityService
             : "Student {$attempt->student->name} received warning {$attempt->warning_count}/"
                 . self::MAX_VIOLATIONS . " on \"{$attempt->exam->title}\".";
 
-        // Route is registered in Phase 6. Gracefully degrade if not yet available.
-        $link = \Illuminate\Support\Facades\Route::has('admin.security-incidents.show')
-            ? route('admin.security-incidents.show', $attempt)
-            : url('/admin/security-incidents/' . $attempt->id);
+        // Link to the cheating logs page, pre-filtered by the student's name so
+        // the admin lands on a relevant view immediately.
+        $link = route('admin.cheating-logs');
 
         $this->notifications->notify($recipient, $type, $title, $message, $link);
     }

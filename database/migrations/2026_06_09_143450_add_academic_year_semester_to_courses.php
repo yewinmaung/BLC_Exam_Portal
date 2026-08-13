@@ -18,7 +18,7 @@ return new class extends Migration
             // semester: null/0 = both semesters
             $table->unsignedTinyInteger('semester')
                   ->default(0)->after('academic_year_id')
-                  ->comment('0=both, 1=sem1, 2=sem2');
+                  ->comment(' 1=sem1, 2=sem2');
         });
     }
 

@@ -150,6 +150,30 @@ class ProfileController extends Controller
         ]);
     }
 
+    // ── Photo delete ──────────────────────────────────────────────────────
+
+    /**
+     * Remove the authenticated user's profile photo and revert to initials.
+     *
+     * DELETE /profile/photo  →  { success: true, initial: "B" }
+     */
+    public function deletePhoto(): JsonResponse
+    {
+        $user = auth()->user();
+
+        if ($user->profile_photo) {
+            Storage::disk('public')->delete($user->profile_photo);
+            $user->update(['profile_photo' => null]);
+        }
+
+        $this->activityLog->log('profile_photo_removed', 'Removed profile photo', $user);
+
+        return response()->json([
+            'success' => true,
+            'initial' => strtoupper(substr($user->name, 0, 1)),
+        ]);
+    }
+
     // ── Password change ───────────────────────────────────────────────────
 
     /**
