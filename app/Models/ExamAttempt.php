@@ -167,7 +167,7 @@ class ExamAttempt extends Model
      * Conditions (ALL must be true):
      *  1. status === 'in_progress'  (status never changed during a disconnect)
      *  2. disconnected_at is set    (a disconnect was recorded)
-     *  3. Elapsed since disconnect  ≤ recovery_time_limit (default 10 min)
+     *  3. Elapsed since disconnect  ≤ recovery_time_limit (default 5 min)
      *  4. expires_at has NOT passed (Final Expiry Time has not been reached)
      *     expires_at = MIN(started_at + duration, schedule.ends_at) — set at attempt creation.
      *     Belt-and-braces: also check schedule.ends_at directly in case an older attempt
@@ -179,7 +179,7 @@ class ExamAttempt extends Model
             return false;
         }
 
-        $recoveryTimeLimit      = (int) config('exam_security.recovery_time_limit', 600);
+        $recoveryTimeLimit      = (int) config('exam_security.recovery_time_limit', 300);
         $elapsedSinceDisconnect = (int) $this->disconnected_at->diffInSeconds(now());
 
         if ($elapsedSinceDisconnect > $recoveryTimeLimit) {

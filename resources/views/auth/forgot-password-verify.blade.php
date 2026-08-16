@@ -273,7 +273,10 @@
                     @endfor
                 </div>
 
-                <div class="otp-expire">⏱ Code expires in 5 minutes.</div>
+                <div class="otp-expire" id="otpExpireMsg">⏱ Code expires in <span id="countdown">5:00</span></div>
+                @if(config('app.debug'))
+                    <div style="font-size:0.7rem;color:#999;text-align:center;">Debug: otpExpiration = {{ $otpExpiration ?? 'null' }}</div>
+                @endif
 
                 <button type="submit" class="btn-submit" id="btnVerify">
                     <i class="bi bi-check2-circle me-1"></i> Verify Code
@@ -480,6 +483,50 @@ document.getElementById('otpForm')?.addEventListener('submit', function (e) {
 
 /* Auto-focus first OTP box on page load */
 digits[0]?.focus();
+
+/* ── OTP Countdown Timer ──────────────────────────────────────────────── */
+@if (!$otpVerified && $otpExpiration)
+(function() {
+    const expiresAt = {{ $otpExpiration }};
+    const countdownEl = document.getElementById('countdown');
+    const expireMsgEl = document.getElementById('otpExpireMsg');
+
+    function updateCountdown() {
+        const now = Math.floor(Date.now() / 1000);
+        const remaining = expiresAt - now;
+
+        if (remaining <= 0) {
+            if (countdownEl) countdownEl.textContent = '0:00';
+            if (expireMsgEl) {
+                expireMsgEl.innerHTML = '⚠️ <span style="color: #dc2626; font-weight: 600;">Code has expired. Please request a new one.</span>';
+            }
+            // Don't disable the button - let server handle validation
+            return;
+        }
+
+        const minutes = Math.floor(remaining / 60);
+        const seconds = remaining % 60;
+        const display = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+        if (countdownEl) {
+            countdownEl.textContent = display;
+            
+            // Change color based on time remaining
+            if (remaining <= 60) {
+                countdownEl.style.color = '#dc2626'; // Red
+                countdownEl.style.fontWeight = '700';
+            } else if (remaining <= 120) {
+                countdownEl.style.color = '#f59e0b'; // Orange
+                countdownEl.style.fontWeight = '600';
+            }
+        }
+
+        setTimeout(updateCountdown, 1000);
+    }
+
+    updateCountdown();
+})();
+@endif
 </script>
 </body>
 </html>

@@ -51,8 +51,7 @@ class ProfileOtp extends Model
     public function isValid(): bool
     {
         return is_null($this->used_at)
-            && $this->expires_at->isFuture()
-            && $this->attempts < 5;
+            && $this->expires_at->isFuture();
     }
 
     /** Verify the given plaintext code against the stored bcrypt hash. */
@@ -67,8 +66,9 @@ class ProfileOtp extends Model
      */
     public static function generate(User $user, string $newPasswordHash): array
     {
-        // Invalidate any previous unused OTP for this user
-        self::where('user_id', $user->id)->whereNull('used_at')->delete();
+        // Delete ALL previous OTPs for this user (used or unused, expired or not)
+        // This ensures we start fresh
+        self::where('user_id', $user->id)->delete();
 
         $plainCode = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
 
@@ -84,14 +84,13 @@ class ProfileOtp extends Model
     }
 
     /**
-     * Find the latest unused, non-expired OTP for a user.
+     * Find the latest OTP for a user (including expired ones, for proper error handling).
      */
     public static function latestForUser(int $userId): ?self
     {
         return self::where('user_id', $userId)
             ->whereNull('used_at')
-            ->where('expires_at', '>', now())
-            ->latest()
+            ->latest('id')  // Order by ID DESC (most reliable)
             ->first();
     }
 }

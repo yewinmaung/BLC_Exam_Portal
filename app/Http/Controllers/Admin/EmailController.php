@@ -888,11 +888,26 @@ HTML;
 
         // Major filter — if a major is selected, include courses for that major
         // OR courses with no major restriction (null = available to all majors).
+        //
+        // CST is a combined selection representing both CT and CS (Year 2+).
+        // When CST is selected, include courses for CT, CS, and CST major IDs,
+        // since students have major = 'CT' or 'CS' and take courses from all three.
         if ($majorId !== null) {
-            $courseQuery->where(function ($q) use ($majorId) {
-                $q->where('major_id', $majorId)
-                  ->orWhereNull('major_id');
-            });
+            $selectedMajor = \App\Models\Major::find($majorId);
+
+            if ($selectedMajor && $selectedMajor->code === 'CST') {
+                // CST selected → show courses belonging to CT, CS, or CST, plus unrestricted courses
+                $combinedIds = \App\Models\Major::whereIn('code', ['CT', 'CS', 'CST'])->pluck('id')->toArray();
+                $courseQuery->where(function ($q) use ($combinedIds) {
+                    $q->whereIn('major_id', $combinedIds)
+                      ->orWhereNull('major_id');
+                });
+            } else {
+                $courseQuery->where(function ($q) use ($majorId) {
+                    $q->where('major_id', $majorId)
+                      ->orWhereNull('major_id');
+                });
+            }
         }
         // If no major selected (year 1), no additional major restriction needed —
         // year 1 courses typically have a major_id assigned to the shared major,
@@ -1024,14 +1039,22 @@ HTML;
 
         // Additionally filter by semester (StudentYearRecord stores semester as string)
         $students = $students->filter(function ($student) use ($semester, $academicYear, $yearLevel, $major) {
-            // Check that the student has an active record for this specific semester
+            // Check that the student has an active record for this specific semester.
+            // When CST is selected, match CT or CS students (CST = combined CT + CS for Year 2+).
+            $isCst = $major && \App\Models\Major::where('id', $major->id)->value('code') === 'CST';
+
             return StudentYearRecord::where('student_id', $student->id)
                 ->where('academic_year_id', $academicYear->id)
                 ->where('year_level_id', $yearLevel->id)
                 ->where('semester', (string) $semester)
                 ->where('status', 'active')
-                ->when($major, function ($q) use ($major) {
+                ->when($major && !$isCst, function ($q) use ($major) {
                     $q->where('major', $major->name);
+                })
+                ->when($isCst, function ($q) {
+                    // CST = CT + CS combined; students have major = 'CT' or 'CS'
+                    $componentNames = \App\Models\Major::whereIn('code', ['CT', 'CS'])->pluck('name')->toArray();
+                    $q->whereIn('major', $componentNames);
                 })
                 ->exists();
         });

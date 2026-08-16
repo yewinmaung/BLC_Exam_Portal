@@ -71,7 +71,19 @@ class ForgotPasswordController extends Controller
         $user        = User::find($request->session()->get('fp_user_id'));
         $otpVerified = (bool) $request->session()->get('fp_otp_verified', false);
 
-        return view('auth.forgot-password-verify', compact('user', 'otpVerified'));
+        // Get OTP expiration time for countdown
+        $otpExpiration = null;
+        if (!$otpVerified) {
+            $otp = ProfileOtp::latestForUser($user->id);
+            if ($otp) {
+                $otpExpiration = $otp->expires_at->timestamp;
+            } else {
+                // Fallback: assume OTP was just created (5 minutes from now)
+                $otpExpiration = now()->addMinutes(5)->timestamp;
+            }
+        }
+
+        return view('auth.forgot-password-verify', compact('user', 'otpVerified', 'otpExpiration'));
     }
 
     // ── Step 4a: Verify OTP only — reveal password fields on success ───────
@@ -90,23 +102,65 @@ class ForgotPasswordController extends Controller
 
         $otp = ProfileOtp::latestForUser($userId);
 
-        if (!$otp || !$otp->isValid()) {
-            return back()->withErrors(['otp' => 'The code has expired or is no longer valid. Please request a new one.']);
+        // Priority 1: Check if OTP exists
+        if (!$otp) {
+            return back()->withErrors(['otp' => 'No OTP found. Please request a new code.']);
         }
 
-        // Increment attempts before checking to prevent timing oracle
-        $otp->increment('attempts');
+        // ── BEFORE-VALIDATION LOG ─────────────────────────────────────────
+        \Log::info('[OTP CHECK] Before validation', [
+            'otp_id'       => $otp->id,
+            'user_id'      => $otp->user_id,
+            'created_at'   => $otp->created_at->toDateTimeString(),
+            'expires_at'   => $otp->expires_at->toDateTimeString(),
+            'attempts'     => $otp->attempts,
+            'used_at'      => $otp->used_at?->toDateTimeString(),
+            'server_now'   => now()->toDateTimeString(),
+            'is_past'      => $otp->expires_at->isPast(),
+            'seconds_left' => $otp->expires_at->diffInSeconds(now(), false),
+        ]);
+        // ─────────────────────────────────────────────────────────────────
 
+        // Priority 2: Check if OTP already used
+        if (!is_null($otp->used_at)) {
+            return back()->withErrors(['otp' => 'This OTP has already been used. Please request a new code.']);
+        }
+
+        // Priority 3: Check if OTP expired (5 minutes from generation)
+        if ($otp->expires_at->isPast()) {
+            return back()->withErrors(['otp' => 'The OTP has expired. Please request a new code.']);
+        }
+
+        // Priority 4: Check if already reached maximum attempts (3 attempts)
+        if ($otp->attempts >= 3) {
+            return back()->withErrors(['otp' => 'Too many incorrect attempts. Please request a new OTP.']);
+        }
+
+        // Priority 5: Check if the OTP code is correct
         if (!$otp->checkCode($request->input('otp'))) {
-            $freshAttempts = $otp->fresh()->attempts;
-            if ($freshAttempts >= 5) {
-                return back()->withErrors(['otp' => 'Too many incorrect attempts. Please request a new code.']);
+            // Increment attempts only on wrong code
+            $otp->increment('attempts');
+
+            // ── AFTER-INCREMENT LOG ───────────────────────────────────────
+            $otpAfter = $otp->fresh();
+            \Log::info('[OTP CHECK] After wrong attempt increment', [
+                'otp_id'     => $otpAfter->id,
+                'attempts'   => $otpAfter->attempts,
+                'expires_at' => $otpAfter->expires_at->toDateTimeString(),
+                'used_at'    => $otpAfter->used_at?->toDateTimeString(),
+            ]);
+            // ─────────────────────────────────────────────────────────────
+
+            if ($otpAfter->attempts >= 3) {
+                return back()->withErrors(['otp' => 'Too many incorrect attempts. Please request a new OTP.']);
             }
-            $remaining = 5 - $freshAttempts;
-            return back()->withErrors(['otp' => "Incorrect code. {$remaining} attempt(s) remaining."]);
+
+            $remaining = 3 - $otpAfter->attempts;
+            $attemptWord = $remaining === 1 ? 'attempt' : 'attempts';
+            return back()->withErrors(['otp' => "Incorrect OTP. {$remaining} {$attemptWord} remaining."]);
         }
 
-        // Code is correct — mark it as used and set the session flag
+        // Priority 6: OTP is correct — mark it as used and set the session flag
         $otp->update(['used_at' => now()]);
         $request->session()->put('fp_otp_verified', true);
 
@@ -162,10 +216,17 @@ class ForgotPasswordController extends Controller
             return back()->withErrors(['otp' => 'Unable to resend code. Please start over.']);
         }
 
-        // Enforce 60-second cooldown
+        // Check latest OTP status
         $latest = ProfileOtp::where('user_id', $userId)->latest()->first();
 
-        if ($latest && $latest->created_at->diffInSeconds(now()) < 60) {
+        // Allow immediate resend if OTP is expired, used, or max attempts reached
+        $canResendImmediately = !$latest 
+            || !is_null($latest->used_at)
+            || $latest->expires_at->isPast()
+            || $latest->attempts >= 3;
+
+        // Enforce 60-second cooldown only for valid OTPs
+        if (!$canResendImmediately && $latest->created_at->diffInSeconds(now()) < 60) {
             $wait = 60 - (int) $latest->created_at->diffInSeconds(now());
             return back()->withErrors(['otp' => "Please wait {$wait} second(s) before requesting a new code."]);
         }
@@ -176,6 +237,8 @@ class ForgotPasswordController extends Controller
         // Reset verification flag so they must re-enter the new code
         $request->session()->forget('fp_otp_verified');
 
-        return back()->with('info', 'A new code has been sent to your email.');
+        // Redirect to the verify page to reload with fresh OTP expiration time
+        return redirect()->route('forgot-password.verify')
+            ->with('info', 'A new code has been sent to your email.');
     }
 }

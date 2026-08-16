@@ -24,7 +24,7 @@ return new class extends Migration
             $table->string('code_hash');            // bcrypt of 6-digit code
             $table->string('new_password_hash');    // bcrypt of new password — stored here so we do NOT keep plaintext in session
             $table->tinyInteger('attempts')->default(0);
-            $table->timestamp('expires_at');
+            $table->timestamp('expires_at')->nullable();
             $table->timestamp('used_at')->nullable();
             $table->timestamps();
 

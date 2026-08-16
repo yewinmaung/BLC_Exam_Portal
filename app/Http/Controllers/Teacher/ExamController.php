@@ -266,7 +266,7 @@ class ExamController extends Controller
             'content_encrypted' => $this->encryption->encrypt($data['content']),
             'marks'             => $data['marks'],
            
-            'category_id'       => $data['category_id'] ?? null,
+           
         ]);
 
         // Rebuild answers

@@ -477,7 +477,7 @@ Eloquent Model instance(s) returned to controller
 **Outgoing Email Provider:** Brevo (Sendinblue) SMTP
 ```
 MAIL_MAILER=smtp
-MAIL_HOST=smtp-relay.brevo.com
+MAIL_HOST=smtp.gmail.com
 MAIL_PORT=587
 MAIL_ENCRYPTION=tls
 ```

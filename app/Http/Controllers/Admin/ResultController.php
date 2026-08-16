@@ -99,9 +99,16 @@ class ResultController extends Controller
             $courseSemInt = (int) $course->semester;     // 0 = both semesters
 
             foreach ($course->exams as $exam) {
-                $schedule   = $exam->latestSchedule;
-                $resultMap  = $exam->results->keyBy('student_id');
-                $attemptMap = $exam->attempts->sortByDesc('id')->keyBy('student_id');
+                $schedule = $exam->latestSchedule;
+
+                // ── Index results and attempts by attempt_id for O(1) lookup ──
+                $resultByAttemptId = $exam->results->keyBy('attempt_id');
+
+                // ── Group attempts by student_id so we can iterate per-student ──
+                // Sort ascending so attempt_number 1 → 2 → 3 renders in order.
+                $attemptsByStudent = $exam->attempts
+                    ->sortBy('attempt_number')
+                    ->groupBy('student_id');
 
                 foreach ($enrolledIds as $sid) {
                     $student = $enrolledStudents[$sid] ?? null;
@@ -140,59 +147,108 @@ class ResultController extends Controller
                         }
                     }
 
-                    // Grouping keys — come entirely from the matched enrollment record
+                    // ── Skip student if they don't have access to this exam ───────
+                    if (! $record) continue;
+                    if ($record->academic_year_id !== $exam->academic_year_id) continue;
+                    if ($courseYl !== 0 && $record->yearLevel?->level !== $courseYl) continue;
+
+                    // Grouping keys
                     $ayId = $record?->academic_year_id ?? ($course->academic_year_id ?? 0);
                     $yl   = $record?->yearLevel?->level ?? ($courseYl ?: 0);
-                    // Display semester: prefer course's own semester tag (shows Sem 1 / Sem 2
-                    // correctly); fall back to record semester when course is "both"
                     $sem  = $courseSemInt !== 0
                         ? $courseSemInt
                         : (int) ($record?->semester ?? 0);
 
-                    // ── Build student result row ──────────────────────────
-                    $result  = $resultMap[$sid]  ?? null;
-                    $attempt = $attemptMap[$sid]  ?? null;
+                    // ── Build one studentRow per attempt ─────────────────
+                    // If no attempts exist for this student on this exam → ABSENT row.
+                    $studentAttempts = $attemptsByStudent[$sid] ?? collect();
 
-                    if ($result) {
-                        $status     = $result->exam_result_status ?? \App\Models\Result::STATUS_FAILED;
-                        $violations = $attempt
-                            ? $attempt->cheatingLogs->map(fn($cl) => $cl->violation_type)->unique()->values()->all()
-                            : [];
-                        $studentRow = [
-                            'student'      => $student,
-                            'result'       => $result,
-                            'status'       => $status,
-                            'score'        => $result->obtained_marks . '/' . $result->total_marks,
-                            'percentage'   => $result->percentage,
-                            'violations'   => $violations,
-                            'warningCount' => $attempt?->warning_count ?? 0,
-                        ];
-                    } else {
+                    if ($studentAttempts->isEmpty()) {
+                        // No attempt at all — ABSENT
                         $status     = 'ABSENT';
                         $studentRow = [
-                            'student'      => $student,
-                            'result'       => null,
-                            'status'       => 'ABSENT',
-                            'score'        => '—',
-                            'percentage'   => null,
-                            'violations'   => [],
-                            'warningCount' => 0,
+                            'student'        => $student,
+                            'result'         => null,
+                            'attempt'        => null,
+                            'attemptNumber'  => null,
+                            'status'         => 'ABSENT',
+                            'score'          => '—',
+                            'percentage'     => null,
+                            'violations'     => [],
+                            'warningCount'   => 0,
                         ];
+
+                        $raw[$ayId][$yl][$sem][$course->id]['course'] = $course;
+                        $raw[$ayId][$yl][$sem][$course->id]['exams'][$exam->id]['exam']     = $exam;
+                        $raw[$ayId][$yl][$sem][$course->id]['exams'][$exam->id]['schedule'] = $schedule;
+                        $raw[$ayId][$yl][$sem][$course->id]['exams'][$exam->id]['studentRows'][] = $studentRow;
+
+                        $e = &$raw[$ayId][$yl][$sem][$course->id]['exams'][$exam->id];
+                        $e['students'] = ($e['students'] ?? 0) + 1;
+                        $e['absent']   = ($e['absent']   ?? 0) + 1;
+                        unset($e);
+
+                        continue;
                     }
 
-                    // ── Accumulate into hierarchy ─────────────────────────
-                    $raw[$ayId][$yl][$sem][$course->id]['course'] = $course;
-                    $raw[$ayId][$yl][$sem][$course->id]['exams'][$exam->id]['exam']      = $exam;
-                    $raw[$ayId][$yl][$sem][$course->id]['exams'][$exam->id]['schedule']  = $schedule;
-                    $raw[$ayId][$yl][$sem][$course->id]['exams'][$exam->id]['studentRows'][] = $studentRow;
+                    // ── Latest attempt = highest attempt_number (already sorted asc,
+                    //    so last() is the latest).
+                    $latestAttempt = $studentAttempts->last();
+                    $latestResult  = $resultByAttemptId[$latestAttempt->id] ?? null;
+                    $latestStatus  = $latestResult
+                        ? ($latestResult->exam_result_status ?? \App\Models\Result::STATUS_FAILED)
+                        : 'ABSENT';
 
-                    // Running per-exam totals
+                    // ── Build one studentRow per attempt (detail display) ─
+                    foreach ($studentAttempts as $attempt) {
+                        $result = $resultByAttemptId[$attempt->id] ?? null;
+
+                        if ($result) {
+                            $rowStatus  = $result->exam_result_status ?? \App\Models\Result::STATUS_FAILED;
+                            $violations = $attempt->cheatingLogs
+                                ->map(fn($cl) => $cl->violation_type)
+                                ->unique()->values()->all();
+                            $studentRow = [
+                                'student'       => $student,
+                                'result'        => $result,
+                                'attempt'       => $attempt,
+                                'attemptNumber' => $attempt->attempt_number,
+                                'status'        => $rowStatus,
+                                'score'         => $result->obtained_marks . '/' . $result->total_marks,
+                                'percentage'    => $result->percentage,
+                                'violations'    => $violations,
+                                'warningCount'  => $attempt->warning_count ?? 0,
+                            ];
+                        } else {
+                            $rowStatus  = 'ABSENT';
+                            $studentRow = [
+                                'student'       => $student,
+                                'result'        => null,
+                                'attempt'       => $attempt,
+                                'attemptNumber' => $attempt->attempt_number,
+                                'status'        => 'ABSENT',
+                                'score'         => '—',
+                                'percentage'    => null,
+                                'violations'    => [],
+                                'warningCount'  => $attempt->warning_count ?? 0,
+                            ];
+                        }
+
+                        $raw[$ayId][$yl][$sem][$course->id]['course'] = $course;
+                        $raw[$ayId][$yl][$sem][$course->id]['exams'][$exam->id]['exam']      = $exam;
+                        $raw[$ayId][$yl][$sem][$course->id]['exams'][$exam->id]['schedule']  = $schedule;
+                        $raw[$ayId][$yl][$sem][$course->id]['exams'][$exam->id]['studentRows'][] = $studentRow;
+                    }
+
+                    // ── Summary counts — based on LATEST attempt only ─────
+                    // One student = one count, determined by their highest
+                    // attempt_number. Previous attempts do NOT affect totals.
                     $e = &$raw[$ayId][$yl][$sem][$course->id]['exams'][$exam->id];
                     $e['students'] = ($e['students'] ?? 0) + 1;
-                    $e['passed']   = ($e['passed']   ?? 0) + ($status === \App\Models\Result::STATUS_PASSED       ? 1 : 0);
-                    $e['failed']   = ($e['failed']   ?? 0) + ($status === \App\Models\Result::STATUS_FAILED       ? 1 : 0);
-                    $e['cheating'] = ($e['cheating'] ?? 0) + ($status === \App\Models\Result::STATUS_DISQUALIFIED ? 1 : 0);
-                    $e['absent']   = ($e['absent']   ?? 0) + ($status === 'ABSENT'                                ? 1 : 0);
+                    $e['passed']   = ($e['passed']   ?? 0) + ($latestStatus === \App\Models\Result::STATUS_PASSED       ? 1 : 0);
+                    $e['failed']   = ($e['failed']   ?? 0) + ($latestStatus === \App\Models\Result::STATUS_FAILED       ? 1 : 0);
+                    $e['cheating'] = ($e['cheating'] ?? 0) + ($latestStatus === \App\Models\Result::STATUS_DISQUALIFIED ? 1 : 0);
+                    $e['absent']   = ($e['absent']   ?? 0) + ($latestStatus === 'ABSENT'                                ? 1 : 0);
                     unset($e);
                 }
             }

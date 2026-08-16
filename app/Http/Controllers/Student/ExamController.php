@@ -32,9 +32,10 @@ class ExamController extends Controller
         // showing all exams the student legitimately belongs to — regardless of
         // whether that academic year is currently marked "is_current".
         $studentYearPairs = StudentYearRecord::where('student_id', $studentId)
-            ->get(['academic_year_id', 'year_level_id']);
+            ->with(['academicYear', 'yearLevel'])
+            ->get();
 
-        $exams = Exam::with(['course', 'activeSchedule'])
+        $exams = Exam::with(['course.yearLevel', 'activeSchedule', 'academicYear'])
             ->where('status', 'published')
             ->where(function ($query) use ($studentId, $studentYearPairs) {
                 foreach ($studentYearPairs as $record) {
@@ -59,7 +60,7 @@ class ExamController extends Controller
                 }
             })
             ->latest()
-            ->paginate(15);
+            ->get();
 
         $examIds = $exams->pluck('id');
 
@@ -97,11 +98,27 @@ class ExamController extends Controller
             ->groupBy('exam_id')
             ->pluck('total', 'exam_id');
 
+        // Group exams by Academic Year → Year Level → Semester
+        $groupedExams = [];
+        foreach ($exams as $exam) {
+            $ayId = $exam->academic_year_id;
+            $ayName = $exam->academicYear?->name ?? 'Unknown Year';
+            $ylLevel = $exam->course?->yearLevel?->level ?? 0;
+            $ylName = $exam->course?->yearLevel?->name ?? 'Year ' . $ylLevel;
+            $semester = (int) $exam->course?->semester ?? 0;
+            $semesterLabel = \App\Models\Course::$semesterLabels[$semester] ?? 'Semester ' . $semester;
+
+            $groupedExams[$ayId][$ylLevel][$semester]['ay_name'] = $ayName;
+            $groupedExams[$ayId][$ylLevel][$semester]['yl_name'] = $ylName;
+            $groupedExams[$ayId][$ylLevel][$semester]['semester_label'] = $semesterLabel;
+            $groupedExams[$ayId][$ylLevel][$semester]['exams'][] = $exam;
+        }
+
         // Mark exam notifications as read when student opens Exams page
         \App\Models\UserNotification::markCategoryRead($studentId, 'exam');
 
         return view('student.exams.index', compact(
-            'exams', 'securityTerminatedAttempts', 'activeAttempts', 'finalizedAttempts',
+            'groupedExams', 'securityTerminatedAttempts', 'activeAttempts', 'finalizedAttempts',
             'usedAttemptCounts'
         ));
     }

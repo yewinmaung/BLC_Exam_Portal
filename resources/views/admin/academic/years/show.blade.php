@@ -20,9 +20,7 @@
         <span class="status-pill status-approved">Current Year</span>
     @endif
     <div class="ms-auto d-flex gap-2">
-        <a href="{{ route('admin.academic.years.students', $year) }}" class="btn btn-primary">
-            <i class="bi bi-people me-1"></i> Manage Students
-        </a>
+       
         <a href="{{ route('admin.academic.years.edit', $year) }}" class="btn btn-outline-primary">
             <i class="bi bi-pencil me-1"></i> Edit
         </a>

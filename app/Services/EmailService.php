@@ -311,6 +311,22 @@ class EmailService
 
         if (!empty($majorIds)) {
             $majorNames = \App\Models\Major::whereIn('id', $majorIds)->pluck('name')->toArray();
+
+            // CST is a combined selection meaning "both CT and CS".
+            // StudentYearRecord.major stores the actual major ('CT' or 'CS'), never 'CST'.
+            // Expand 'CST' into its component majors so recipients are found correctly.
+            $cstCodes = \App\Models\Major::where('code', 'CST')->pluck('name')->toArray();
+            $hasCst   = !empty(array_intersect($majorNames, $cstCodes));
+            if ($hasCst) {
+                $componentNames = \App\Models\Major::whereIn('code', ['CT', 'CS'])->pluck('name')->toArray();
+                $majorNames     = array_values(array_unique(
+                    array_merge(
+                        array_diff($majorNames, $cstCodes), // keep any non-CST entries as-is
+                        $componentNames                     // add CT + CS component names
+                    )
+                ));
+            }
+
             if (!empty($majorNames)) {
                 $query->whereIn('major', $majorNames);
             }
