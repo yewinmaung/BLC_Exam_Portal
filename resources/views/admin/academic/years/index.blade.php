@@ -135,14 +135,7 @@
                         </td>
                         <td>
                             <div class="d-flex gap-1">
-                                <a href="{{ route('admin.academic.years.students', $y) }}"
-                                   class="btn btn-sm btn-primary" title="Manage Students">
-                                    <i class="bi bi-people"></i>
-                                </a>
-                                <a href="{{ route('admin.academic.years.show', $y) }}"
-                                   class="btn btn-sm btn-outline-secondary" title="View">
-                                    <i class="bi bi-eye"></i>
-                                </a>
+                               
                                 <a href="{{ route('admin.academic.years.edit', $y) }}"
                                    class="btn btn-sm btn-outline-primary" title="Edit">
                                     <i class="bi bi-pencil"></i>

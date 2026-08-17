@@ -29,7 +29,7 @@ class UserController extends Controller
 
         $roles = Role::orderBy('name')->get();
 
-        $users = User::with('role')
+        $users = User::with(['role', 'studentYearRecords.yearLevel', 'studentYearRecords.academicYear'])
             ->when($search, fn ($q) =>
                 $q->where('name',  'like', "%{$search}%")
                   ->orWhere('email', 'like', "%{$search}%")

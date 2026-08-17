@@ -13,10 +13,10 @@
 </div>
 @if(!empty($teacher->id))
 {{-- Edit mode: allow optional password reset --}}
-<div class="mb-3">
+<!-- <div class="mb-3">
     <label class="form-label">Password <span class="text-muted">(leave blank to keep current)</span></label>
     <input type="password" name="password" class="form-control" minlength="8" placeholder="Leave blank to keep current password">
-</div>
+</div> -->
 @else
 {{-- Create mode: password is auto-generated and emailed --}}
 <div class="mb-3">

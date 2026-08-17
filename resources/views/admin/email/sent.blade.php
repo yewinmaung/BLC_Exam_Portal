@@ -24,24 +24,7 @@
                        value="{{ request('email') }}">
             </div>
 
-            <div style="min-width:160px">
-                <select name="type" class="form-select form-select-sm">
-                    <option value="">All types</option>
-                    @foreach([
-                        'compose'          => 'Compose',
-                        'bulk'             => 'Bulk',
-                        'otp'              => 'OTP',
-                        'password_changed' => 'Password Changed',
-                        'exam_published'   => 'Exam Published',
-                        'welcome'          => 'Welcome',
-                        'test_email'       => 'Test Email',
-                    ] as $val => $label)
-                    <option value="{{ $val }}" {{ request('type') === $val ? 'selected' : '' }}>
-                        {{ $label }}
-                    </option>
-                    @endforeach
-                </select>
-            </div>
+           
 
             <div class="d-flex gap-1">
                 <button type="submit" class="btn btn-primary btn-sm px-3">

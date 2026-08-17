@@ -49,10 +49,24 @@
                             </span>
                         </td>
                         <td>
-                            @if($u->isStudent() && $u->academic_year)
-                            <span class="badge bg-primary-subtle text-primary">Year {{ $u->academic_year }}</span>
+                            @if($u->isStudent())
+                                @php
+                                    // Latest student_year_record by academic_year_id (highest = most recent)
+                                    $latestRecord = $u->studentYearRecords
+                                        ->sortByDesc('academic_year_id')
+                                        ->first();
+                                @endphp
+                                @if($latestRecord?->yearLevel)
+                                    <span class="badge bg-primary-subtle text-primary">
+                                        {{ $latestRecord->yearLevel->name }}
+                                    </span>
+                                @elseif($u->academic_year)
+                                    <span class="badge bg-primary-subtle text-primary">Year {{ $u->academic_year }}</span>
+                                @else
+                                    <span class="text-muted">—</span>
+                                @endif
                             @else
-                            <span class="text-muted">—</span>
+                                <span class="text-muted">—</span>
                             @endif
                         </td>
                         <td>

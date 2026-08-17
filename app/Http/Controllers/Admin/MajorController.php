@@ -84,7 +84,7 @@ class MajorController extends Controller
             'name'        => $data['name'],
             'code'        => $data['code'],
             'description' => $data['description'] ?? null,
-            'is_active'   => $request->boolean('is_active', true),
+            'is_active'   => $request->boolean('is_active', false),
         ]);
 
         return redirect()->route('admin.majors.index')->with('success', 'Major updated.');

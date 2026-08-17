@@ -11,7 +11,7 @@
 @section('sidebar')@include('partials.admin-sidebar')@endsection
 
 @section('content')
-<div style="max-width:780px">
+<div style="">
 
     {{-- ── Back + Actions ──────────────────────────────────────────────── --}}
     <div class="d-flex gap-2 mb-3">
@@ -27,8 +27,9 @@
         </form>
         @endif
     </div>
-
-    {{-- ── Meta card ───────────────────────────────────────────────────── --}}
+   <div class="row">
+    <div class="col-6">
+          {{-- ── Meta card ───────────────────────────────────────────────────── --}}
     <div class="card mb-3">
         <div class="card-header d-flex align-items-center justify-content-between">
             <span><i class="bi bi-envelope me-2"></i>Email #{{ $log->id }}</span>
@@ -138,7 +139,9 @@
         </div>
     </div>
 
-    {{-- ── Email Body Preview ──────────────────────────────────────────── --}}
+    </div>
+    <div class="col-6">
+  {{-- ── Email Body Preview ──────────────────────────────────────────── --}}
     @if($log->body_html)
     <div class="card">
         <div class="card-header d-flex align-items-center justify-content-between">
@@ -173,6 +176,11 @@
         </div>
     </div>
     @endif
+    </div>
+   </div>
+
+  
+  
 
 </div>
 
