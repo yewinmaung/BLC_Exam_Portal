@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Models\YearLevel;
 use App\Services\ActivityLogService;
 use App\Services\EmailService;
+use App\Services\StudentMajorLockService;
 use App\Services\YearLevelProgressionValidator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -24,7 +25,8 @@ class StudentController extends Controller
     public function __construct(
         private ActivityLogService $activityLog,
         private EmailService $emailService,
-        private YearLevelProgressionValidator $progressionValidator
+        private YearLevelProgressionValidator $progressionValidator,
+        private StudentMajorLockService $majorLockService
     ) {}
 
     public function index(Request $request)
@@ -151,7 +153,25 @@ class StudentController extends Controller
                     $student->forceDelete();
                     return back()->withInput()->withErrors(['year_level_id' => $progressionError]);
                 }
+
+                $majorError = $this->majorLockService->validateMajor(
+                    $student->id,
+                    $newYearLevel->level,
+                    isset($data['major_id']) ? (int) $data['major_id'] : null
+                );
+                if ($majorError) {
+                    $student->forceDelete();
+                    return back()->withInput()->withErrors(['major_id' => $majorError]);
+                }
             }
+
+            $resolvedMajorId = $newYearLevel
+                ? $this->majorLockService->resolveMajorIdForSave(
+                    $student->id,
+                    $newYearLevel->level,
+                    isset($data['major_id']) ? (int) $data['major_id'] : null
+                )
+                : ($data['major_id'] ?? null);
 
             StudentYearRecord::create([
                 'student_id'       => $student->id,
@@ -159,7 +179,7 @@ class StudentController extends Controller
                 'year_level_id'    => $data['year_level_id'],
                 'semester'         => $data['semester'] ?? '1',
                 'department'       => $data['department'] ?? null,
-                'major'            => $this->majorNameFromId($data['major_id'] ?? null),
+                'major'            => $this->majorNameFromId($resolvedMajorId),
                 'status'           => 'active',
                 'record_type'      => $recordType,
                 'remark'           => $data['remark'] ?? null,
@@ -335,8 +355,27 @@ class StudentController extends Controller
         $enrolledCourseIds = $student->enrollments()->pluck('course_id')->all();
         $currentMajorId    = Major::resolveIdFromLabel($currentRecord?->major);
 
+        $currentYearLevel = $currentRecord?->yearLevel?->level
+            ?? ($currentRecord?->year_level_id
+                ? YearLevel::find($currentRecord->year_level_id)?->level
+                : null);
+
+        $majorLocked = $currentYearLevel !== null
+            && $this->majorLockService->isMajorLocked($student->id, $currentYearLevel);
+
+        $lockedMajorId = $majorLocked
+            ? $this->majorLockService->getCanonicalMajorId($student->id)
+            : null;
+
+        $lockedMajorCode = $lockedMajorId ? Major::find($lockedMajorId)?->code : null;
+
+        if ($majorLocked && $lockedMajorId) {
+            $currentMajorId = $lockedMajorId;
+        }
+
         return view('admin.students.edit', compact(
-            'student', 'academicYears', 'yearLevels', 'majors', 'courses', 'enrolledCourseIds', 'currentRecord', 'currentMajorId'
+            'student', 'academicYears', 'yearLevels', 'majors', 'courses', 'enrolledCourseIds',
+            'currentRecord', 'currentMajorId', 'majorLocked', 'lockedMajorId', 'lockedMajorCode'
         ));
     }
 
@@ -361,6 +400,12 @@ class StudentController extends Controller
             'semester'         => $request->input('semester',          $currentRecord?->semester),
             'major_id'         => $request->input('major_id',          Major::resolveIdFromLabel($currentRecord?->major)),
         ];
+
+        $targetYearLevelId = $scopeRecord->year_level_id;
+        $targetLevel = $targetYearLevelId ? YearLevel::find($targetYearLevelId)?->level : null;
+        if ($targetLevel && $this->majorLockService->isMajorLocked($student->id, $targetLevel)) {
+            $scopeRecord->major_id = $this->majorLockService->getCanonicalMajorId($student->id);
+        }
 
         $allowedCourseIds = $this->getAllowedCourses($scopeRecord)->pluck('id')->all();
 
@@ -399,6 +444,10 @@ class StudentController extends Controller
             $newYearLevel = YearLevel::find($data['year_level_id']);
             $recordType   = $data['record_type'] ?? null;
 
+            $isEditingSameRecord = $currentRecord
+                && (int) $currentRecord->academic_year_id === (int) $data['academic_year_id']
+                && (int) $currentRecord->year_level_id    === (int) $data['year_level_id'];
+
             if ($newYearLevel) {
                 // Determine whether this is editing the EXISTING record or adding a NEW one.
                 //
@@ -408,10 +457,6 @@ class StudentController extends Controller
                 // CREATE path: the admin changed academic year or year level
                 //   → treat it as appending a new record; include ALL existing records.
                 //
-                $isEditingSameRecord = $currentRecord
-                    && (int) $currentRecord->academic_year_id === (int) $data['academic_year_id']
-                    && (int) $currentRecord->year_level_id    === (int) $data['year_level_id'];
-
                 if ($isEditingSameRecord) {
                     // EDIT path: exclude the record being updated to avoid self-conflict.
                     $progressionError = $this->progressionValidator->validateEdit(
@@ -434,7 +479,24 @@ class StudentController extends Controller
                 if ($progressionError) {
                     return back()->withInput()->withErrors(['year_level_id' => $progressionError]);
                 }
+
+                $majorError = $this->majorLockService->validateMajor(
+                    $student->id,
+                    $newYearLevel->level,
+                    isset($data['major_id']) ? (int) $data['major_id'] : null
+                );
+                if ($majorError) {
+                    return back()->withInput()->withErrors(['major_id' => $majorError]);
+                }
             }
+
+            $resolvedMajorId = $newYearLevel
+                ? $this->majorLockService->resolveMajorIdForSave(
+                    $student->id,
+                    $newYearLevel->level,
+                    isset($data['major_id']) ? (int) $data['major_id'] : null
+                )
+                : ($data['major_id'] ?? null);
 
             StudentYearRecord::updateOrCreate(
                 [
@@ -445,7 +507,7 @@ class StudentController extends Controller
                 [
                     'semester'    => $data['semester'] ?? '1',
                     'department'  => $data['department'] ?? null,
-                    'major'       => $this->majorNameFromId($data['major_id'] ?? null),
+                    'major'       => $this->majorNameFromId($resolvedMajorId),
                     'status'      => 'active',
                     'record_type' => $recordType,
                     'remark'      => $data['remark'] ?? null,

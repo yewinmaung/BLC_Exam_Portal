@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\RecordType;
 use App\Models\AcademicYear;
+use App\Models\Major;
 use App\Models\Role;
 use App\Models\StudentYearRecord;
 use App\Models\User;
@@ -24,6 +25,7 @@ class StudentAcademicRecordTest extends TestCase
     private User $admin;
     private array $years   = [];   // academic_year_id keyed by start_year
     private array $levels  = [];   // year_level_id keyed by level integer
+    private array $majors  = [];   // major_id keyed by code
 
     // ── Setup ─────────────────────────────────────────────────────────────────
 
@@ -42,6 +44,11 @@ class StudentAcademicRecordTest extends TestCase
         YearLevel::ensureDefaults();
         foreach (YearLevel::orderBy('level')->get() as $yl) {
             $this->levels[$yl->level] = $yl->id;
+        }
+
+        Major::ensureDefaults();
+        foreach (Major::all() as $major) {
+            $this->majors[$major->code] = $major->id;
         }
 
         // Academic years 2018-2030
@@ -96,6 +103,7 @@ class StudentAcademicRecordTest extends TestCase
                 'academic_year_id' => $this->years[$r['year']],
                 'year_level_id'    => $this->levels[$r['level']],
                 'semester'         => $r['semester'] ?? '1',
+                'major'            => $r['major'] ?? null,
                 'status'           => 'active',
                 'record_type'      => $r['type'] ?? null,
                 'remark'           => $r['remark'] ?? null,
@@ -606,5 +614,90 @@ class StudentAcademicRecordTest extends TestCase
         $response = $this->createStudent([]);
         $response->assertRedirect();
         $this->assertDatabaseCount('student_year_records', 0);
+    }
+
+    /** @test */
+    public function third_year_student_cannot_change_major_from_second_year_choice()
+    {
+        $student = $this->seedStudentWithRecords([
+            ['year' => 2022, 'level' => 1],
+            ['year' => 2023, 'level' => 2, 'major' => 'CT'],
+            ['year' => 2024, 'level' => 3, 'major' => 'CT'],
+        ]);
+
+        $response = $this->updateStudent($student, [
+            'academic_year_id' => $this->years[2024],
+            'year_level_id'    => $this->levels[3],
+            'semester'         => '1',
+            'record_type'      => RecordType::NORMAL,
+            'major_id'         => $this->majors['CS'],
+        ]);
+
+        $response->assertSessionHasErrors('major_id');
+    }
+
+    /** @test */
+    public function second_year_student_can_change_major_before_progressing()
+    {
+        $student = $this->seedStudentWithRecords([
+            ['year' => 2023, 'level' => 1],
+            ['year' => 2024, 'level' => 2, 'major' => 'CT'],
+        ]);
+
+        $response = $this->updateStudent($student, [
+            'academic_year_id' => $this->years[2024],
+            'year_level_id'    => $this->levels[2],
+            'semester'         => '1',
+            'record_type'      => RecordType::NORMAL,
+            'major_id'         => $this->majors['CS'],
+        ]);
+
+        $response->assertSessionDoesntHaveErrors('major_id');
+        $this->assertDatabaseHas('student_year_records', [
+            'student_id'    => $student->id,
+            'year_level_id' => $this->levels[2],
+            'major'         => 'Computer Science',
+        ]);
+    }
+
+    /** @test */
+    public function transfer_student_can_pick_major_on_entry_year_then_it_locks()
+    {
+        $student = $this->seedStudentWithRecords([
+            ['year' => 2024, 'level' => 3, 'major' => 'CT', 'type' => RecordType::TRANSFER, 'remark' => 'Transferred.'],
+        ]);
+
+        $response = $this->updateStudent($student, [
+            'academic_year_id' => $this->years[2025],
+            'year_level_id'    => $this->levels[4],
+            'semester'         => '1',
+            'record_type'      => RecordType::NORMAL,
+            'major_id'         => $this->majors['CS'],
+        ]);
+
+        $response->assertSessionHasErrors('major_id');
+    }
+
+    /** @test */
+    public function transfer_entry_year_allows_major_selection()
+    {
+        $role    = Role::where('slug', 'student')->first();
+        $student = User::factory()->create(['role_id' => $role->id]);
+
+        $response = $this->updateStudent($student, [
+            'academic_year_id' => $this->years[2024],
+            'year_level_id'    => $this->levels[3],
+            'semester'         => '1',
+            'record_type'      => RecordType::TRANSFER,
+            'remark'           => 'Transferred from another university.',
+            'major_id'         => $this->majors['CT'],
+        ]);
+
+        $response->assertSessionDoesntHaveErrors('major_id');
+        $this->assertDatabaseHas('student_year_records', [
+            'student_id'    => $student->id,
+            'year_level_id' => $this->levels[3],
+            'major'         => 'Computer Technology',
+        ]);
     }
 }

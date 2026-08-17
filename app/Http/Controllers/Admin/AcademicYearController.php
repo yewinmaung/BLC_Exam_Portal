@@ -6,10 +6,12 @@ use App\Enums\RecordType;
 use App\Enums\RoleSlug;
 use App\Http\Controllers\Controller;
 use App\Models\AcademicYear;
+use App\Models\Major;
 use App\Models\StudentYearRecord;
 use App\Models\User;
 use App\Models\YearLevel;
 use App\Services\AcademicService;
+use App\Services\StudentMajorLockService;
 use App\Services\YearLevelProgressionValidator;
 use Illuminate\Http\Request;
 
@@ -17,7 +19,8 @@ class AcademicYearController extends Controller
 {
     public function __construct(
         private AcademicService $academicService,
-        private YearLevelProgressionValidator $progressionValidator
+        private YearLevelProgressionValidator $progressionValidator,
+        private StudentMajorLockService $majorLockService
     ) {}
 
     /* ── CRUD ─────────────────────────────────────────────────── */
@@ -163,6 +166,7 @@ class AcademicYearController extends Controller
             'semester'      => 'required|in:1,2',
             'department'    => 'nullable|string|max:100',
             'major'         => 'nullable|string|max:100',
+            'major_id'      => 'nullable|exists:majors,id',
             'record_type'   => 'nullable|in:' . implode(',', RecordType::ALL),
             'remark'        => $requiresRemark
                 ? ['required', 'string', 'max:1000']
@@ -171,6 +175,9 @@ class AcademicYearController extends Controller
 
         $newYearLevel = YearLevel::find($data['year_level_id']);
         $recordType   = $data['record_type'] ?? null;
+        $resolvedMajorId = !empty($data['major_id'])
+            ? (int) $data['major_id']
+            : Major::resolveIdFromLabel($data['major'] ?? null);
 
         $created  = 0;
         $skipped  = 0;
@@ -202,7 +209,32 @@ class AcademicYearController extends Controller
                     $rejected[] = ($student?->name ?? "Student #{$studentId}") . ': ' . $progressionError;
                     continue;
                 }
+
+                $submittedMajorId = !empty($data['major_id'])
+                    ? (int) $data['major_id']
+                    : Major::resolveIdFromLabel($data['major'] ?? null);
+
+                $majorError = $this->majorLockService->validateMajor(
+                    (int) $studentId,
+                    $newYearLevel->level,
+                    $submittedMajorId
+                );
+                if ($majorError) {
+                    $student = User::find($studentId);
+                    $rejected[] = ($student?->name ?? "Student #{$studentId}") . ': ' . $majorError;
+                    continue;
+                }
+
+                $resolvedMajorId = $this->majorLockService->resolveMajorIdForSave(
+                    (int) $studentId,
+                    $newYearLevel->level,
+                    $submittedMajorId
+                );
             }
+
+            $majorName = $resolvedMajorId
+                ? Major::find($resolvedMajorId)?->name
+                : ($data['major'] ?? null);
 
             StudentYearRecord::create([
                 'student_id'       => $studentId,
@@ -210,7 +242,7 @@ class AcademicYearController extends Controller
                 'year_level_id'    => $data['year_level_id'],
                 'semester'         => $data['semester'],
                 'department'       => $data['department'] ?? null,
-                'major'            => $data['major'] ?? null,
+                'major'            => $majorName,
                 'status'           => 'active',
                 'record_type'      => $recordType,
                 'remark'           => $data['remark'] ?? null,

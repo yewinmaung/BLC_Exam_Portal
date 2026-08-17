@@ -115,8 +115,15 @@
                                 Major
                                 <span class="text-danger" id="majorRequired" style="display:none">*</span>
                                 <span class="text-muted fw-normal" id="majorOptional" style="font-size:0.8rem">(Year 1 — not required)</span>
+                                @if(!empty($majorLocked) && !empty($lockedMajorCode))
+                                <span class="text-muted fw-normal" id="majorLockedNote" style="font-size:0.8rem">
+                                    (locked to {{ $lockedMajorCode }})
+                                </span>
+                                @endif
                             </label>
-                            <select name="major_id" id="sel_major" class="form-select @error('major_id') is-invalid @enderror">
+                            <select name="major_id" id="sel_major"
+                                    class="form-select @error('major_id') is-invalid @enderror"
+                                    @if(!empty($majorLocked)) disabled @endif>
                                 <option value="">— No Major (Year 1) —</option>
                                 @foreach($majors as $m)
                                 <option value="{{ $m->id }}"
@@ -126,6 +133,9 @@
                                 </option>
                                 @endforeach
                             </select>
+                            @if(!empty($majorLocked) && !empty($lockedMajorId))
+                            <input type="hidden" name="major_id" value="{{ $lockedMajorId }}">
+                            @endif
                             @error('major_id')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
                         </div>
 
@@ -188,12 +198,21 @@
     const reqBadge     = document.getElementById('majorRequired');
     const optNote      = document.getElementById('majorOptional');
 
+    const majorLocked  = @json(!empty($majorLocked));
+
     if (!selYearLevel || !majorSel) return;
 
     // Store all major options for show/hide
     const allMajorOptions = Array.from(majorSel.options);
 
     function toggleMajor() {
+        if (majorLocked) {
+            majorSel.required = true;
+            if (reqBadge) reqBadge.style.display = 'none';
+            if (optNote)  optNote.style.display  = 'none';
+            return;
+        }
+
         const opt   = selYearLevel.options[selYearLevel.selectedIndex];
         const level = opt ? parseInt(opt.dataset.level || '0', 10) : 0;
 
