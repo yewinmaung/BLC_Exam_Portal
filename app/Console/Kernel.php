@@ -27,6 +27,15 @@ class Kernel extends ConsoleKernel
         $schedule->command('results:notify-students')
                  ->everyMinute()
                  ->withoutOverlapping(5);  // lock expires after 5 min
+
+        // Auto-finalize disconnected exam attempts whose recovery window or exam
+        // expiry has elapsed while the student did not return to the page.
+        // Runs every minute; withoutOverlapping() prevents stacking on slow DB.
+        // Uses SessionRecoveryService::finalizeForScheduler() — same finalization
+        // path as the web-request handler, grading ALL saved answers.
+        $schedule->command('sessions:finalize-expired')
+                 ->everyMinute()
+                 ->withoutOverlapping(5);  // lock expires after 5 min
     }
 
     /**

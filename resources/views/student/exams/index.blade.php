@@ -92,11 +92,13 @@
                                 </span>
                                 @elseif($isEnded)
                                 <span class="text-muted small"><i class="bi bi-check-circle me-1"></i>Ended</span>
-                                @elseif($activeAttempt)
+                                @elseif($activeAttempt && $activeAttempt->disconnected_at !== null)
                                 @php
+                                    // Recovery deadline is anchored to the actual disconnect timestamp.
+                                    // NEVER fall back to now() — that would start the countdown from
+                                    // page-load time instead of the real disconnect moment.
                                     $recoveryLimit    = (int) config('exam_security.recovery_time_limit', 300);
-                                    $disconnectedBase = $activeAttempt->disconnected_at ?? now();
-                                    $recoveryDeadline = $disconnectedBase->copy()->addSeconds($recoveryLimit);
+                                    $recoveryDeadline = $activeAttempt->disconnected_at->copy()->addSeconds($recoveryLimit);
                                 @endphp
                                 <span class="small"
                                       id="recovery-badge-{{ $e->id }}"
@@ -108,6 +110,8 @@
                                     <i class="bi bi-wifi-off me-1"></i>
                                     <span class="recovery-value">--:--</span>
                                 </span>
+                                @elseif($activeAttempt)
+                                <span class="text-muted small"><i class="bi bi-clock me-1"></i>{{ $schedule->duration_minutes }}min</span>
                                 @else
                                 <span class="text-muted small"><i class="bi bi-clock me-1"></i>{{ $schedule->duration_minutes }}min</span>
                                 @endif
@@ -145,22 +149,34 @@
                             @elseif($activeAttempt)
                             @php
                                 $recoveryLimit    = (int) config('exam_security.recovery_time_limit', 300);
-                                $disconnectedBase = $activeAttempt->disconnected_at ?? now();
-                                $recoveryDeadline = $disconnectedBase->copy()->addSeconds($recoveryLimit);
-                                $inRecoveryWindow = now()->lt($recoveryDeadline) && now()->lt($activeAttempt->expires_at);
+                                // Only disconnected attempts have a recovery window.
+                                // NEVER fall back to now() — that would make every active attempt
+                                // appear to be in a recovery window.
+                                $isDisconnected   = $activeAttempt->disconnected_at !== null;
+                                $inRecoveryWindow = false;
+                                if ($isDisconnected) {
+                                    $recoveryDeadline = $activeAttempt->disconnected_at->copy()->addSeconds($recoveryLimit);
+                                    $inRecoveryWindow = now()->lt($recoveryDeadline) && now()->lt($activeAttempt->expires_at);
+                                }
                             @endphp
                             <span id="action-btn-{{ $e->id }}">
-                                @if($inRecoveryWindow)
+                                @if($isDisconnected && $inRecoveryWindow)
                                 <a href="{{ route('student.exam.take', $activeAttempt) }}"
                                    class="btn btn-sm btn-danger"
                                    style="border:none;font-weight:700">
                                     <i class="bi bi-wifi-off me-1"></i>Reconnect
                                 </a>
-                                @else
+                                @elseif($isDisconnected && !$inRecoveryWindow)
                                 <a href="{{ route('student.exam.take', $activeAttempt) }}"
                                    class="btn btn-sm btn-outline-secondary"
                                    style="font-weight:600">
                                     <i class="bi bi-hourglass-split me-1"></i>Finalize
+                                </a>
+                                @else
+                                <a href="{{ route('student.exam.take', $activeAttempt) }}"
+                                   class="btn btn-sm btn-success"
+                                   style="font-weight:700">
+                                    <i class="bi bi-play-fill me-1"></i>Continue
                                 </a>
                                 @endif
                             </span>

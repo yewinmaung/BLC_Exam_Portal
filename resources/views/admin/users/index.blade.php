@@ -51,10 +51,15 @@
                         <td>
                             @if($u->isStudent())
                                 @php
-                                    // Latest student_year_record by academic_year_id (highest = most recent)
+                                    // Prefer the active record; fall back to the record with the
+                                    // highest academic year start_year (most recent calendar year).
                                     $latestRecord = $u->studentYearRecords
-                                        ->sortByDesc('academic_year_id')
-                                        ->first();
+                                        ->where('status', 'active')
+                                        ->sortByDesc(fn($r) => $r->academicYear?->start_year ?? 0)
+                                        ->first()
+                                        ?? $u->studentYearRecords
+                                            ->sortByDesc(fn($r) => $r->academicYear?->start_year ?? 0)
+                                            ->first();
                                 @endphp
                                 @if($latestRecord?->yearLevel)
                                     <span class="badge bg-primary-subtle text-primary">

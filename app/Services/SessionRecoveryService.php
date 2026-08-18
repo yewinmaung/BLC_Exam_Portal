@@ -182,6 +182,37 @@ class SessionRecoveryService
     }
 
     // ──────────────────────────────────────────────────────────────────────
+    //  Scheduler entry point — called by FinalizeExpiredRecoverySessions
+    // ──────────────────────────────────────────────────────────────────────
+
+    /**
+     * Finalize a disconnected attempt whose recovery window or exam expiry
+     * has elapsed, called from the scheduler command.
+     *
+     * This is the background counterpart to the web-request path in
+     * handleReconnect() Path B.  It uses the identical finalizeExpiredSession()
+     * logic so ALL saved answers are graded and the same attempt is used.
+     *
+     * The attempt MUST be in_progress with a non-null disconnected_at.
+     * The caller (FinalizeExpiredRecoverySessions) is responsible for
+     * pre-filtering to only expired attempts.
+     */
+    public function finalizeForScheduler(ExamAttempt $attempt): void
+    {
+        // Guard: only finalize attempts that are genuinely expired.
+        // canAutoRecover() returns false when recovery window elapsed OR expires_at passed.
+        if ($attempt->canAutoRecover()) {
+            // Recovery window still open — not yet eligible for auto-finalization.
+            return;
+        }
+
+        $this->finalizeExpiredSession(
+            $attempt,
+            'Recovery window expired. Exam finalized automatically with all saved answers.'
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
     //  Timer helper — available to the controller
     // ──────────────────────────────────────────────────────────────────────
 

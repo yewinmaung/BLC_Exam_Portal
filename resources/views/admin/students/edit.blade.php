@@ -37,10 +37,10 @@
                             <input type="email" name="email" class="form-control"
                                    value="{{ old('email', $student->email) }}" required>
                         </div>
-                        <div class="col-sm-6">
+                        <!-- <div class="col-sm-6">
                             <label class="form-label">New Password <span class="text-muted fw-normal">(leave blank to keep)</span></label>
                             <input type="password" name="password" class="form-control" minlength="8">
-                        </div>
+                        </div> -->
                         <div class="col-sm-6">
                             <label class="form-label">Phone</label>
                             <input type="text" name="phone" class="form-control"
