@@ -607,7 +607,7 @@
         ].join(';');
         overlay.innerHTML = `
             <div style="max-width:480px">
-                <div style="font-size:3rem;margin-bottom:1rem">🔒</div>
+                <div style="font-size:3rem;margin-bottom:1rem"></div>
                 <h3 style="font-size:1.4rem;font-weight:800;margin-bottom:.75rem">
                     Exam Session Locked
                 </h3>

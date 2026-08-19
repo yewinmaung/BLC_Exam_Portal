@@ -389,7 +389,7 @@
 <div class="fs-recovery-overlay" id="fsRecoveryOverlay">
     <div class="fs-recovery-box">
         <div class="fs-recovery-icon"><i class="bi bi-fullscreen-exit"></i></div>
-        <h4>⚠️ Fullscreen Mode Exited</h4>
+        <h4>Fullscreen Mode Exited</h4>
         <p>
             Fullscreen mode was exited. Please return to fullscreen within
             <strong>10 seconds</strong> to continue.<br>
@@ -414,7 +414,7 @@
         <div class="fs-recovery-icon" style="background:linear-gradient(135deg,#991b1b,#dc2626)">
             <i class="bi bi-shield-exclamation"></i>
         </div>
-        <h4 style="color:#991b1b">🚨 Security Violation Detected</h4>
+        <h4 style="color:#991b1b"> Security Violation Detected</h4>
         <p style="color:#7f1d1d;font-size:0.88rem;line-height:1.6">
             <strong>Detected violations:</strong><br>
             • Fullscreen Exit<br>
