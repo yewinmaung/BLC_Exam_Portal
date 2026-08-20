@@ -208,21 +208,50 @@ class ExamSessionController extends Controller
             'reason'      => 'nullable|string|max:100',
         ]);
 
+        $userAgent = $request->userAgent() ?? '';
+
         $this->recovery->recordDisconnect(
             $attempt,
             $data['question_id'] ?? null,
             $data['reason'] ?? 'browser_close',
             [
-                'user_agent'   => $request->userAgent(),
+                'user_agent'   => $userAgent,
                 'ip_address'   => $request->ip(),
                 'browser_info' => [
-                    'platform' => $request->header('sec-ch-ua-platform'),
-                    'mobile'   => $request->header('sec-ch-ua-mobile'),
+                    'browser' => $this->parseBrowserName($userAgent),
+                    'os'      => $this->parseOsName($userAgent),
                 ],
             ]
         );
 
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * Parse a human-readable browser name from the User-Agent string.
+     * Order matters: Edge contains "Chrome" so must be checked first.
+     */
+    private function parseBrowserName(string $ua): string
+    {
+        if (str_contains($ua, 'Edg/'))    return 'Edge';
+        if (str_contains($ua, 'OPR/') || str_contains($ua, 'Opera')) return 'Opera';
+        if (str_contains($ua, 'Chrome'))  return 'Chrome';
+        if (str_contains($ua, 'Firefox')) return 'Firefox';
+        if (str_contains($ua, 'Safari'))  return 'Safari';
+        return 'Unknown';
+    }
+
+    /**
+     * Parse a human-readable OS name from the User-Agent string.
+     */
+    private function parseOsName(string $ua): string
+    {
+        if (str_contains($ua, 'Android'))                              return 'Android';
+        if (str_contains($ua, 'iPhone') || str_contains($ua, 'iPad')) return 'iOS';
+        if (str_contains($ua, 'Windows'))                              return 'Windows';
+        if (str_contains($ua, 'Mac'))                                  return 'macOS';
+        if (str_contains($ua, 'Linux'))                                return 'Linux';
+        return 'Unknown';
     }
 
     // ──────────────────────────────────────────────────────────────────────

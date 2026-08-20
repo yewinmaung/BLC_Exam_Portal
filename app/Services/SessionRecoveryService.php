@@ -80,10 +80,13 @@ class SessionRecoveryService
         string      $reason,
         array       $browserInfo = []
     ): SessionRecoveryLog {
+        // Capture now() once so attempt and log share the exact same timestamp.
+        $disconnectedAt = now();
+
         // Only mark the disconnect timestamp and last question.
         // Status remains in_progress — a temporary disconnect is NOT a termination.
         $attempt->update([
-            'disconnected_at'  => now(),
+            'disconnected_at'  => $disconnectedAt,
             'last_question_id' => $questionId,
             // status intentionally NOT changed
         ]);
@@ -94,7 +97,7 @@ class SessionRecoveryService
             'student_id'                    => $attempt->student_id,
             'exam_id'                       => $attempt->exam_id,
             'disconnect_reason'             => $reason,
-            'disconnected_at'               => now(),
+            'disconnected_at'               => $disconnectedAt,
             'last_question_id'              => $questionId,
             'recovery_status'               => 'pending',
             'browser_info'                  => $browserInfo['browser_info'] ?? null,
@@ -157,21 +160,28 @@ class SessionRecoveryService
         // Compute frozen remaining seconds BEFORE clearing disconnected_at
         $frozenSeconds = $this->computeFrozenSeconds($attempt, $schedule);
 
-        $duration = $attempt->disconnected_at->diffInSeconds(now());
+        // Fetch the pending log record first so duration is measured from the
+        // exact timestamp stored in the log (same value written by recordDisconnect).
+        $log = SessionRecoveryLog::where('attempt_id', $attempt->id)
+            ->whereNull('reconnected_at')
+            ->latest('disconnected_at')
+            ->first();
+
+        $reconnectedAt = now();
+        $duration = $log ? $log->disconnected_at->diffInSeconds($reconnectedAt) : 0;
 
         // Clear the disconnect marker — session is live again.
         // Status was already in_progress — nothing to restore.
         $attempt->update(['disconnected_at' => null]);
 
         // Audit log
-        SessionRecoveryLog::where('attempt_id', $attempt->id)
-            ->whereNull('reconnected_at')
-            ->latest('disconnected_at')
-            ->update([
+        if ($log) {
+            $log->update([
                 'recovery_status'               => 'recovered',
-                'reconnected_at'                => now(),
+                'reconnected_at'                => $reconnectedAt,
                 'disconnected_duration_seconds' => $duration,
             ]);
+        }
 
         return [
             'success'        => true,
@@ -292,19 +302,26 @@ class SessionRecoveryService
      */
     private function finalizeExpiredSession(ExamAttempt $attempt, string $message): array
     {
-        $duration = $attempt->disconnected_at
-            ? $attempt->disconnected_at->diffInSeconds(now())
-            : 0;
-
-        // Update audit log
-        SessionRecoveryLog::where('attempt_id', $attempt->id)
+        // Fetch the pending log record so duration is measured from the exact
+        // timestamp stored in the log (avoids race between attempt and log now()).
+        $log = SessionRecoveryLog::where('attempt_id', $attempt->id)
             ->whereNull('reconnected_at')
             ->latest('disconnected_at')
-            ->update([
+            ->first();
+
+        $finalizedAt = now();
+        $duration = $log
+            ? $log->disconnected_at->diffInSeconds($finalizedAt)
+            : ($attempt->disconnected_at ? $attempt->disconnected_at->diffInSeconds($finalizedAt) : 0);
+
+        // Update audit log
+        if ($log) {
+            $log->update([
                 'recovery_status'               => 'expired',
-                'reconnected_at'                => now(),
+                'reconnected_at'                => $finalizedAt,
                 'disconnected_duration_seconds' => $duration,
             ]);
+        }
 
         // Finalize via normal submission workflow
         $attempt->update([

@@ -43,7 +43,7 @@
   {{-- Header --}}
   <div class="header">
     <h1>{{ config('app.name', 'Believe Exam') }}</h1>
-    <p>🎉 Welcome — Your Account Is Ready</p>
+    <p> Welcome — Your Account Is Ready</p>
   </div>
 
   {{-- Body --}}
@@ -65,7 +65,7 @@
 
     {{-- Credentials --}}
     <div class="cred-box">
-      <div class="cred-box-title">🔑 Your Login Credentials</div>
+      <div class="cred-box-title">Your Login Credentials</div>
       <div class="cred-row">
         <span class="cred-label">Portal URL</span>
         <a href="{{ config('app.url') }}" class="cred-value" style="color:#2d27a0;text-decoration:none">
@@ -77,14 +77,21 @@
         <span class="cred-value">{{ $userEmail }}</span>
       </div>
       <div class="cred-row">
-        <span class="cred-label">Password</span>
+        <span class="cred-label">Password (temporary)</span>
         <span class="cred-value">{{ $temporaryPassword }}</span>
+      
       </div>
+      @if(!empty($passwordExpiresAt))
+      <div class="cred-row">
+        <span class="cred-label">Expires At</span>
+        <span class="cred-value" style="font-family:Arial,sans-serif;font-size:0.82rem;letter-spacing:0;">{{ $passwordExpiresAt }}</span>
+      </div>
+      @endif
     </div>
 
     {{-- Security notice --}}
     <div class="warning">
-      <strong>⚠ You must change your password immediately after logging in.</strong>
+      <strong>You must change your password immediately after logging in.</strong>
       This temporary password will no longer work once you set a new one.
       Keep your new password safe and do not share it with anyone.
     </div>

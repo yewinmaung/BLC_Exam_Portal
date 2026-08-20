@@ -35,6 +35,9 @@ class EmailService
                 'userEmail'         => $user->email,
                 'userRole'          => $roleLabel,
                 'temporaryPassword' => $temporaryPassword,
+                'passwordExpiresAt' => $user->temporary_password_expires_at
+                    ? $user->temporary_password_expires_at->format('d F Y, g:i A')
+                    : null,
             ])->render();
 
             $subject = '[' . config('app.name') . '] Welcome — Your Account is Ready';

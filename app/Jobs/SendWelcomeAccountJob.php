@@ -57,11 +57,16 @@ class SendWelcomeAccountJob implements ShouldQueue
         };
 
         // Render the branded welcome-account blade template
+        $expiresAt = $user->temporary_password_expires_at
+            ? $user->temporary_password_expires_at->format('d F Y, g:i A')
+            : null;
+
         $bodyHtml = view('emails.welcome-account', [
             'userName'          => $user->name,
             'userEmail'         => $user->email,
             'userRole'          => $roleLabel,
             'temporaryPassword' => $this->temporaryPassword,
+            'passwordExpiresAt' => $expiresAt,
         ])->render();
 
         $subject = '[' . config('app.name') . '] Welcome — Your Account is Ready';
