@@ -330,7 +330,7 @@ class ExamController extends Controller
             $this->notifications->notify(
                 $student,
                 'exam_published',
-                'New Exam Available 📝',
+                'New Exam Available ',
                 "Exam \"{$exam->title}\" for {$exam->course->title} is now live. Good luck!",
                 route('student.exams.show', $exam)
             );
@@ -341,7 +341,7 @@ class ExamController extends Controller
         $this->notifications->notify(
             $exam->teacher,
             'exam_published',
-            'Your Exam is Now Live 🎉',
+            'Your Exam is Now Live',
             "Your exam \"{$exam->title}\" has been published and is now available to students.",
             route('teacher.exams.show', $exam)
         );

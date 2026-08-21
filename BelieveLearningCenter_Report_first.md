@@ -1063,3 +1063,334 @@ The `warning_number` field stores the per-violation-type count (how many times t
 Displays all `CheatingLog` records with student info, exam info, violation type, and IP address.
 
 ---
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Essay question grading | ⚠️ Partial | Not auto-graded; requires manual review (no manual grading UI found) |
+| Approval/rejection of terminated attempts | ⚠️ Partial | approve() and reject() methods exist in ExamSecurityService but no controller routes found for admin UI |
+
+### 19.3 Not Implemented Features
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Grade calculation (letter grade) | ❌ Not implemented | Code comment: "REMOVED: grade calculation completely removed" |
+| Schedule modification after creation | ❌ Not implemented | updateSchedule() and deleteSchedule() return error |
+| API routes | ❌ Not implemented | All routes are web routes; no API routes used |
+| Password reset via email link | ❌ Not implemented | Uses OTP instead of traditional reset link |
+| Real-time timer sync | ❌ Not implemented | Timer is client-side; server validates on each request |
+
+---
+
+## CHAPTER 20 — REFERENCE TABLES
+
+### 20.1 Controller Reference
+
+| Controller | Path | Key Methods |
+|------------|------|-------------|
+| AuthController | app/Http/Controllers/Auth | login, logout, register, showForcePasswordChange, requestNewTemporaryPassword |
+| ForgotPasswordController | app/Http/Controllers/Auth | sendOtp, showVerify, checkOtp, resendOtp, resetPassword |
+| AcademicYearController | app/Http/Controllers/Admin | index, store, assignStudents, removeStudent |
+| CourseController | app/Http/Controllers/Admin | index, store, update, destroy, byYearLevel |
+| EnrollmentController | app/Http/Controllers/Admin | index, store, destroy, studentsByYearLevel |
+| ExamController (Admin) | app/Http/Controllers/Admin | index, approve, schedule, publish, close, open |
+| ExamController (Teacher) | app/Http/Controllers/Teacher | create, store, addQuestion, importQuestions, submitForApproval, destroy |
+| ExamController (Student) | app/Http/Controllers/Student | index, show, start |
+| ExamSessionController | app/Http/Controllers/Student | take, saveAnswer, violation, submit, disconnect |
+| ResultController (Admin) | app/Http/Controllers/Admin | index, show |
+| ResultController (Teacher) | app/Http/Controllers/Teacher | index |
+| ResultController (Student) | app/Http/Controllers/Student | index, show |
+| StudentController | app/Http/Controllers/Admin | index, store, show, edit, update |
+| TeacherController | app/Http/Controllers/Admin | index, store, show, edit |
+| UserController | app/Http/Controllers/Admin | index, store, edit, update, terminate, restore |
+| CheatingLogController | app/Http/Controllers/Admin | index |
+| EmailController | app/Http/Controllers/Admin | inbox, compose, send, syncInbox |
+| NotificationController | app/Http/Controllers | index, markRead |
+| ProfileController | app/Http/Controllers | show, updatePhoto, deletePhoto, changePassword |
+| DashboardController | app/Http/Controllers | adminDashboard, teacherDashboard, studentDashboard |
+
+### 20.2 Service Reference
+
+| Service | Path | Purpose |
+|---------|------|---------|
+| ActivityLogService | app/Services | Log user actions for audit trail |
+| AcademicService | app/Services | Student history, enrollment helper |
+| EmailService | app/Services | Email composition, delivery, bulk send |
+| EncryptionService | app/Services | AES-256 encryption/decryption wrapper |
+| ExamAccessService | app/Services | Eligibility checks for exam taking |
+| ExamSecurityService | app/Services | Violation recording, termination, approval/rejection |
+| GradingService | app/Services | Auto-grading for MCQ, true_false, fill_blank |
+| InboxSyncService | app/Services | IMAP sync, thread resolution |
+| NotificationService | app/Services | In-app notification creation |
+| QuestionImportService | app/Services | Parse and import questions from files |
+| SessionRecoveryService | app/Services | Disconnect recording, recovery, finalization |
+| StudentMajorLockService | app/Services | Major lock enforcement |
+| YearLevelProgressionValidator | app/Services | Validate student year progression |
+
+### 20.3 Job Reference
+
+| Job | Queue | Purpose |
+|-----|-------|---------|
+| SendEmailJob | emails | Deliver queued emails via SMTP |
+| SendWelcomeAccountJob | emails | Send welcome email with temp password |
+| SendNewTemporaryPasswordJob | emails | Send regenerated temp password |
+| SendPasswordChangedJob | emails | Confirm password change |
+| SendProfileOtpJob | emails | Deliver OTP code |
+| SendExamTimetableNotificationJob | emails | Send exam timetable to students |
+| InboxSyncJob | default | Manual inbox sync (alternative to command) |
+
+### 20.4 Middleware Reference
+
+| Middleware | Purpose |
+|------------|---------|
+| Authenticate | Redirect unauthenticated users to login |
+| RoleMiddleware | Check user role matches route requirement |
+| ForcePasswordChange | Intercept requests if temp password requires change |
+| EnsureExamActive | Block requests if attempt is not in_progress |
+| EnsureSingleExamSession | Prevent multiple concurrent exam sessions |
+| EncryptCookies | Encrypt cookies |
+| VerifyCsrfToken | CSRF protection |
+| TrustProxies | Handle proxy headers |
+
+### 20.5 Console Command Reference
+
+| Command | Schedule | Purpose |
+|---------|----------|---------|
+| inbox:sync | everyMinute | Fetch new emails from IMAP |
+| results:notify-students | everyMinute | Send result notifications after exam closes |
+| sessions:finalize-expired | everyMinute | Finalize disconnected sessions past recovery window |
+| results:mark-absent | everyMinute | Mark absent results for non-attempted exams |
+
+### 20.6 Database Table Reference
+
+| Table | Purpose |
+|-------|---------|
+| users | User accounts |
+| roles | User roles (admin, teacher, student) |
+| academic_years | Academic year definitions |
+| year_levels | Year level definitions (1-5) |
+| majors | Major definitions (CS, CT, CST) |
+| courses | Course catalog |
+| enrollments | Student-course enrollments |
+| student_year_records | Student academic year assignments |
+| exams | Exam definitions |
+| questions | Exam questions |
+| answers | Question answer options |
+| exam_schedules | Exam scheduling info |
+| exam_attempts | Student exam attempts |
+| student_answers | Student answer submissions |
+| results | Exam results |
+| cheating_logs | Security violation records |
+| session_recovery_logs | Disconnect/recovery audit |
+| user_notifications | In-app notifications |
+| activity_logs | Activity audit trail |
+| email_logs | Email delivery log |
+| inbox_emails | IMAP inbox messages |
+| inbox_sync_state | IMAP sync checkpoint |
+| profile_otps | Password reset OTP codes |
+| exam_timetable_notifications | Timetable notification records |
+| jobs | Queue job storage |
+| password_resets | Password reset tokens |
+
+---
+
+## CHAPTER 21 — PROJECT IMPLEMENTATION SUMMARY
+
+### 21.1 System Architecture
+
+The Believe Learning Center Online Examination System is a monolithic Laravel 9 application following the Model-View-Controller (MVC) pattern with a service layer for business logic encapsulation.
+
+**Key architectural decisions:**
+- Service classes encapsulate complex business logic (grading, security, recovery, email)
+- Eloquent ORM for database interactions with relationship definitions
+- Blade templates for server-side rendering (no SPA framework)
+- Vanilla JavaScript for client-side interactions
+- Queue system for async email processing
+- Console scheduler for background tasks
+
+### 21.2 Security Implementation
+
+**Authentication:**
+- Laravel's built-in authentication with custom controllers
+- Temporary password with 24-hour expiry
+- Account locking after 3 failed attempts
+- Force password change on first login
+
+**Authorization:**
+- Role-based middleware (admin, teacher, student)
+- Policy-based authorization for exam ownership
+
+**Exam Security:**
+- Content encryption for questions and answers
+- Session token validation
+- Client-side anti-cheat detection (8 mechanisms)
+- Server-side 3-violation termination policy
+- Automatic disqualification with result invalidation
+
+### 21.3 Exam System Highlights
+
+**Exam lifecycle:**
+Draft → Pending Approval → Approved → Scheduled → Published → Closed
+
+**Timer system:**
+- `expires_at = MIN(started_at + duration_minutes, schedule.ends_at)`
+- Client timer derived from server timestamp
+- Server validates on every request
+- Frozen timer on session recovery
+
+**Grading:**
+- Automatic grading for MCQ, true_false, fill_blank
+- Exact match (case-sensitive) for fill_blank answers
+- Percentage calculated as (obtained / total) × 100
+- Pass/fail based on passing_marks threshold
+
+### 21.4 Session Recovery Innovation
+
+The session recovery system distinguishes between intentional cheating and technical issues:
+- Network disconnects and browser closes are treated as recoverable
+- 5-minute recovery window (configurable)
+- Timer freezes at disconnect moment
+- Student loses no time during disconnect
+- Automatic finalization after window expiry
+
+### 21.5 Communication Systems
+
+**Email:**
+- Queued delivery via `emails` queue
+- Welcome, OTP, password change, cheating alert, timetable notifications
+- IMAP inbox sync for incoming student emails
+- Thread resolution via References header
+
+**Notifications:**
+- In-app notifications per user
+- Category-based badge system
+- Mark-as-read on page visit
+
+### 21.6 Database Design
+
+- 25+ Eloquent models with defined relationships
+- Foreign key constraints enforced
+- Migration-based schema management
+- Soft deletes for questions
+- Enum columns for status fields
+
+### 21.7 Code Quality Observations
+
+**Strengths:**
+- Clear separation of concerns via service classes
+- Comprehensive docblocks with parameter documentation
+- Consistent naming conventions
+- Transaction usage for data integrity
+- Lock-for-update for concurrent request handling
+
+**Areas for Enhancement:**
+- Form Request classes not used (validation inline in controllers)
+- No API layer for potential mobile integration
+- Essay grading requires manual intervention (no UI found)
+- Schedule modification blocked after creation
+
+### 21.8 Final Verification Summary
+
+This report documents the ACTUAL implemented system based on comprehensive codebase analysis. All references to classes, methods, routes, fields, and business logic are derived from source code inspection.
+
+**Files analyzed:**
+- Controllers: 20+ files
+- Services: 16 files
+- Models: 25+ files
+- Middleware: 8 files
+- Jobs: 7 files
+- Mail classes: 5 files
+- Console Commands: 4 files
+- Migrations: 44 files
+- JavaScript: 3 files (including 808-line exam-anticheat.js)
+- Blade views: 50+ files
+- Config files: 3 custom files
+
+**Total lines of code analyzed:** 15,000+ lines
+
+---
+
+## APPENDIX A: CONFIGURATION FILES
+
+| File | Purpose |
+|------|---------|
+| config/exam_security.php | Session recovery time limit (300 seconds) |
+| config/imap.php | IMAP connection settings for Webklex library |
+| config/believe.php | Default admin credentials for seeding |
+
+---
+
+## APPENDIX B: ENVIRONMENT VARIABLES
+
+Key environment variables used:
+- `EXAM_RECOVERY_TIME_LIMIT` — Session recovery window (default: 300)
+- `IMAP_HOST`, `IMAP_PORT`, `IMAP_USERNAME`, `IMAP_PASSWORD` — IMAP connection
+- `MAIL_*` — SMTP settings
+- `DEFAULT_ADMIN_EMAIL`, `DEFAULT_ADMIN_PASSWORD` — Initial admin seeding
+
+---
+
+## APPENDIX C: ROUTE STRUCTURE
+
+```
+/ (guest)
+├── login
+├── register
+├── forgot-password
+└── password/change (auth, force.password.change)
+
+/admin (auth, role:admin)
+├── dashboard
+├── users
+├── students
+├── teachers
+├── courses
+├── majors
+├── academic/years
+├── enrollments
+├── exams
+│   ├── {exam}/approve
+│   ├── {exam}/schedule
+│   ├── {exam}/publish
+│   ├── {exam}/close
+│   └── {exam}/open
+├── results
+├── cheating-logs
+└── email
+    ├── inbox
+    ├── compose
+    └── sync
+
+/teacher (auth, role:teacher)
+├── dashboard
+├── profile
+├── exams
+│   ├── create
+│   ├── {exam}/questions
+│   ├── {exam}/import
+│   └── {exam}/submit
+└── results
+
+/student (auth, role:student)
+├── dashboard
+├── courses
+├── exams
+│   ├── {exam}/start
+│   └── {exam} (show)
+├── attempt/{attempt}
+│   ├── take
+│   ├── save
+│   ├── violation
+│   ├── submit
+│   └── disconnect     
+└── results
+```
+
+---
+
+**Report Generated:** August 20, 2026  
+**Framework Version:** Laravel 9  
+**PHP Version:** 8.x  
+**Database:** MySQL  
+
+---
+
+*End of Report*
