@@ -33,13 +33,21 @@
             foreach ($semGroups as $sem => $courseGroups) {
                 $semLabel = \App\Models\Course::$semesterLabels[$sem] ?? 'Semester ' . $sem;
                 $totalSubjects = count($courseGroups);
-                $totalStudents = 0; $totalPassed = 0; $totalFailed = 0; $totalCheating = 0;
+                $totalPassed = 0; $totalFailed = 0; $totalCheating = 0;
+                $uniqueStudentIds = [];
                 foreach ($courseGroups as $cg) {
-                    $totalStudents += $cg['students'];
                     $totalPassed   += $cg['passed'];
                     $totalFailed   += $cg['failed'];
                     $totalCheating += $cg['cheating'];
+                    // Collect unique student IDs across all exams in this course group
+                    // so that one student taking multiple subjects counts only once.
+                    foreach ($cg['exams'] as $es) {
+                        foreach ($es['studentRows'] as $sr) {
+                            $uniqueStudentIds[$sr['student']->id] = true;
+                        }
+                    }
                 }
+                $totalStudents = count($uniqueStudentIds);
                 $rowKey = $ayId . '_' . $yl . '_' . $sem;
                 $tableRows[] = compact(
                     'rowKey','ayLabel','ylLabel','semLabel',
@@ -69,9 +77,6 @@
                         <th style="white-space:nowrap">Semester</th>
                         <th class="text-center">Subjects</th>
                         <th class="text-center">Students</th>
-                        <th class="text-center" style="color:#22c55e">Passed</th>
-                        <th class="text-center" style="color:#ef4444">Failed</th>
-                        <th class="text-center" style="color:#f59e0b">Cheating</th>
                         <th class="text-center">Detail</th>
                     </tr>
                 </thead>
@@ -85,9 +90,6 @@
                     <td><span class="badge" style="background:#ede9fe;color:#3730a3;font-size:0.72rem">{{ $row['semLabel'] }}</span></td>
                     <td class="text-center" style="font-weight:700">{{ $row['totalSubjects'] }}</td>
                     <td class="text-center" style="font-weight:700">{{ $row['totalStudents'] }}</td>
-                    <td class="text-center"><span style="font-weight:700;color:#166534">{{ $row['totalPassed'] }}</span></td>
-                    <td class="text-center"><span style="font-weight:700;color:#991b1b">{{ $row['totalFailed'] }}</span></td>
-                    <td class="text-center"><span style="font-weight:700;color:#92400e">{{ $row['totalCheating'] }}</span></td>
                     <td class="text-center">
                         <button type="button"
                                 class="btn btn-sm btn-outline-primary detail-toggle"
@@ -100,7 +102,7 @@
 
                 {{-- Detail accordion row --}}
                 <tr id="detail-{{ $row['rowKey'] }}" class="detail-row" style="display:none">
-                    <td colspan="9" style="padding:0;background:#fafbff;border-top:none">
+                    <td colspan="6" style="padding:0;background:#fafbff;border-top:none">
                         <div style="padding:1rem 1.5rem 1.5rem">
 
                             @foreach($row['courseGroups'] as $cgi => $cg)
@@ -139,7 +141,7 @@
                                             ['label'=>'Absent',          'val'=>$cg['absent'],   'color'=>'#6b7280'],
                                         ] as $stat)
                                         <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:0.4rem 0.85rem;min-width:90px">
-                                            <div style="font-size:0.68rem;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.04em">{{ $stat['label'] }}</div>
+                                            <div style="font-size:0.72rem;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:2px">{{ $stat['label'] }}</div>
                                             <div style="font-size:1.1rem;font-weight:800;color:{{ $stat['color'] }}">{{ $stat['val'] }}</div>
                                         </div>
                                         @endforeach
@@ -178,6 +180,7 @@
                                                     <thead style="background:#f8faff">
                                                         <tr>
                                                             <th class="ps-3">Student</th>
+                                                            <th class="text-center" style="white-space:nowrap">Attempt</th>
                                                             <th class="text-center">Score</th>
                                                             <th class="text-center">%</th>
                                                             <th>Status</th>
@@ -185,70 +188,103 @@
                                                         </tr>
                                                     </thead>
                                                     <tbody>
-                                                    @foreach($es['studentRows'] as $sr)
-                                                    <tr @if($sr['status'] === 'DISQUALIFIED') style="background:#fffbeb" @endif>
-                                                        <td class="ps-3">
-                                                            <div style="font-weight:600">{{ $sr['student']->name }}</div>
-                                                            <div style="font-size:0.68rem;color:#9ca3af">{{ $sr['student']->email }}</div>
-                                                        </td>
-                                                        <td class="text-center" style="font-weight:700">
-                                                            @if($sr['status'] === 'ABSENT')
-                                                                <span class="text-muted">—</span>
-                                                            @else
-                                                                {{ $sr['score'] }}
+                                                    @php
+                                                        // Group rows by student so we can span the name cell
+                                                        // across multiple attempt rows.
+                                                        $grouped = collect($es['studentRows'])->groupBy(fn($r) => $r['student']->id);
+                                                    @endphp
+                                                    @foreach($grouped as $studentId => $attempts)
+                                                        @foreach($attempts as $attemptIndex => $sr)
+                                                        <tr @if($sr['status'] === 'DISQUALIFIED') style="background:#fffbeb" @endif>
+
+                                                            {{-- Student name cell — only on the first attempt row --}}
+                                                            @if($attemptIndex === 0)
+                                                            <td class="ps-3" rowspan="{{ count($attempts) }}"
+                                                                style="vertical-align:middle;border-right:1px solid #f0f0f0">
+                                                                <div style="font-weight:600">{{ $sr['student']->name }}</div>
+                                                                <div style="font-size:0.68rem;color:#9ca3af">{{ $sr['student']->email }}</div>
+                                                            </td>
                                                             @endif
-                                                        </td>
-                                                        <td class="text-center">
-                                                            @if($sr['percentage'] !== null)
-                                                            <div class="d-flex align-items-center gap-1 justify-content-center">
-                                                                <div style="width:40px;height:4px;background:#e5e7eb;border-radius:2px;overflow:hidden">
-                                                                    <div style="height:100%;border-radius:2px;width:{{ min($sr['percentage'],100) }}%;background:{{ $sr['status']==='PASSED' ? '#22c55e' : ($sr['status']==='DISQUALIFIED' ? '#f59e0b' : '#ef4444') }}"></div>
+
+                                                            {{-- Attempt number --}}
+                                                            <td class="text-center" style="white-space:nowrap;color:#6b7280">
+                                                                @if($sr['attemptNumber'] !== null)
+                                                                    <span class="badge"
+                                                                          style="background:#ede9fe;color:#3730a3;font-size:0.68rem;font-weight:700">
+                                                                        #{{ $sr['attemptNumber'] }}
+                                                                    </span>
+                                                                @else
+                                                                    <span class="text-muted">—</span>
+                                                                @endif
+                                                            </td>
+
+                                                            {{-- Score --}}
+                                                            <td class="text-center" style="font-weight:700">
+                                                                @if($sr['status'] === 'ABSENT')
+                                                                    <span class="text-muted">—</span>
+                                                                @else
+                                                                    {{ $sr['score'] }}
+                                                                @endif
+                                                            </td>
+
+                                                            {{-- Percentage --}}
+                                                            <td class="text-center">
+                                                                @if($sr['percentage'] !== null)
+                                                                <div class="d-flex align-items-center gap-1 justify-content-center">
+                                                                    <div style="width:40px;height:4px;background:#e5e7eb;border-radius:2px;overflow:hidden">
+                                                                        <div style="height:100%;border-radius:2px;width:{{ min($sr['percentage'],100) }}%;background:{{ $sr['status']==='PASSED' ? '#22c55e' : ($sr['status']==='DISQUALIFIED' ? '#f59e0b' : '#ef4444') }}"></div>
+                                                                    </div>
+                                                                    <span style="font-size:0.75rem;font-weight:600">{{ $sr['percentage'] }}%</span>
                                                                 </div>
-                                                                <span style="font-size:0.75rem;font-weight:600">{{ $sr['percentage'] }}%</span>
-                                                            </div>
-                                                            @else
-                                                                <span class="text-muted">—</span>
-                                                            @endif
-                                                        </td>
-                                                        <td>
-                                                            @if($sr['status'] === 'PASSED')
-                                                                <span class="badge bg-success" style="font-size:0.7rem">Passed</span>
-                                                            @elseif($sr['status'] === 'DISQUALIFIED')
-                                                                <span class="badge bg-warning text-dark" style="font-size:0.7rem">
-                                                                    <i class="bi bi-exclamation-triangle me-1"></i>Cheating Terminated
-                                                                </span>
-                                                            @elseif($sr['status'] === 'ABSENT')
-                                                                <span class="badge bg-secondary" style="font-size:0.7rem">Absent</span>
-                                                            @else
-                                                                <span class="badge bg-danger" style="font-size:0.7rem">Failed</span>
-                                                            @endif
-                                                        </td>
-                                                        <td style="color:#6b7280;font-size:0.75rem">
-                                                            @if($sr['status'] === 'DISQUALIFIED')
-                                                                <button type="button"
-                                                                        class="btn btn-sm cheat-detail-btn"
-                                                                        data-bs-toggle="modal"
-                                                                        data-bs-target="#cheatingModal"
-                                                                        data-student="{{ $sr['student']->name }} ({{ $sr['student']->email }})"
-                                                                        data-exam="{{ $es['exam']->title }}"
-                                                                        data-reason="{{ $sr['result']?->violation_reason ?? 'Cheating detected' }}"
-                                                                        data-disqualified="{{ $sr['result']?->disqualified_at?->format('M d, Y H:i:s') ?? '—' }}"
-                                                                        data-score="{{ $sr['score'] }}"
-                                                                        data-percentage="{{ $sr['percentage'] }}%"
-                                                                        data-warnings="{{ $sr['warningCount'] }}/3"
-                                                                        data-violations="{{ implode('|', $sr['violations']) }}"
-                                                                        style="font-size:0.7rem;padding:2px 8px;background:#fef3c7;color:#92400e;border:1px solid #f59e0b;border-radius:5px;font-weight:600">
-                                                                    <i class="bi bi-shield-exclamation me-1"></i>View Details
-                                                                </button>
-                                                            @elseif($sr['status'] === 'ABSENT')
-                                                                No Attempt
-                                                            @elseif($sr['status'] === 'FAILED')
-                                                                Low Score
-                                                            @else
-                                                                —
-                                                            @endif
-                                                        </td>
-                                                    </tr>
+                                                                @else
+                                                                    <span class="text-muted">—</span>
+                                                                @endif
+                                                            </td>
+
+                                                            {{-- Status badge --}}
+                                                            <td>
+                                                                @if($sr['status'] === 'PASSED')
+                                                                    <span class="badge bg-success" style="font-size:0.7rem">Passed</span>
+                                                                @elseif($sr['status'] === 'DISQUALIFIED')
+                                                                    <span class="badge bg-warning text-dark" style="font-size:0.7rem">
+                                                                        <i class="bi bi-exclamation-triangle me-1"></i>Cheating Terminated
+                                                                    </span>
+                                                                @elseif($sr['status'] === 'ABSENT')
+                                                                    <span class="badge bg-secondary" style="font-size:0.7rem">Absent</span>
+                                                                @else
+                                                                    <span class="badge bg-danger" style="font-size:0.7rem">Failed</span>
+                                                                @endif
+                                                            </td>
+
+                                                            {{-- Notes / cheating details --}}
+                                                            <td style="color:#6b7280;font-size:0.75rem">
+                                                                @if($sr['status'] === 'DISQUALIFIED')
+                                                                    <button type="button"
+                                                                            class="btn btn-sm cheat-detail-btn"
+                                                                            data-bs-toggle="modal"
+                                                                            data-bs-target="#cheatingModal"
+                                                                            data-student="{{ $sr['student']->name }} ({{ $sr['student']->email }})"
+                                                                            data-exam="{{ $es['exam']->title }}"
+                                                                            data-attempt="{{ $sr['attemptNumber'] ?? '—' }}"
+                                                                            data-reason="{{ $sr['result']?->violation_reason ?? 'Cheating detected' }}"
+                                                                            data-disqualified="{{ $sr['result']?->disqualified_at?->format('M d, Y H:i:s') ?? '—' }}"
+                                                                            data-score="{{ $sr['score'] }}"
+                                                                            data-percentage="{{ $sr['percentage'] }}%"
+                                                                            data-warnings="{{ $sr['warningCount'] }}/3"
+                                                                            data-violations="{{ implode('|', $sr['violations']) }}"
+                                                                            style="font-size:0.7rem;padding:2px 8px;background:#fef3c7;color:#92400e;border:1px solid #f59e0b;border-radius:5px;font-weight:600">
+                                                                        <i class="bi bi-shield-exclamation me-1"></i>View Details
+                                                                    </button>
+                                                                @elseif($sr['status'] === 'ABSENT')
+                                                                    No Attempt
+                                                                @elseif($sr['status'] === 'FAILED')
+                                                                    Low Score
+                                                                @else
+                                                                    —
+                                                                @endif
+                                                            </td>
+                                                        </tr>
+                                                        @endforeach
                                                     @endforeach
                                                     </tbody>
                                                 </table>
@@ -299,6 +335,11 @@
                 <div class="mb-3">
                     <div style="font-size:0.7rem;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:3px">EXAM:</div>
                     <div id="cm-exam" style="font-size:0.9rem;color:#111827"></div>
+                </div>
+
+                <div class="mb-3">
+                    <div style="font-size:0.7rem;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:3px">ATTEMPT:</div>
+                    <div id="cm-attempt" style="font-size:0.9rem;color:#111827"></div>
                 </div>
 
                 <div class="mb-3">
@@ -391,12 +432,13 @@
         var btn = e.relatedTarget;
         if (!btn) return;
 
-        document.getElementById('cm-student').textContent      = btn.dataset.student     || '—';
-        document.getElementById('cm-exam').textContent         = btn.dataset.exam        || '—';
-        document.getElementById('cm-disqualified').textContent = btn.dataset.disqualified|| '—';
-        document.getElementById('cm-score').textContent        = btn.dataset.score       || '—';
-        document.getElementById('cm-percentage').textContent   = btn.dataset.percentage  || '—';
-        document.getElementById('cm-warnings').textContent     = btn.dataset.warnings    || '';
+        document.getElementById('cm-student').textContent      = btn.dataset.student      || '—';
+        document.getElementById('cm-exam').textContent         = btn.dataset.exam         || '—';
+        document.getElementById('cm-attempt').textContent      = btn.dataset.attempt      || '—';
+        document.getElementById('cm-disqualified').textContent = btn.dataset.disqualified || '—';
+        document.getElementById('cm-score').textContent        = btn.dataset.score        || '—';
+        document.getElementById('cm-percentage').textContent   = btn.dataset.percentage   || '—';
+        document.getElementById('cm-warnings').textContent     = btn.dataset.warnings     || '';
 
         // Violation reason
         var reasonEl = document.getElementById('cm-reason');
