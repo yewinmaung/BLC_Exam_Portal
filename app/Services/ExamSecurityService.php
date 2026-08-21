@@ -303,7 +303,7 @@ class ExamSecurityService
             'warning_count' => 1,
             'terminated'    => false,
             'locked'        => false,
-            'message'       => '⚠️ Warning 1 of 3: Prohibited activity detected. '
+            'message'       => ' Warning 1 of 3: Prohibited activity detected. '
                 . 'A second violation will notify your instructor.',
         ];
     }
@@ -350,7 +350,7 @@ class ExamSecurityService
             'warning_count' => $attempt->warning_count,
             'terminated'    => false,
             'locked'        => false,
-            'message'       => '🚨 Warning 2 of 3: Your instructor has been notified. '
+            'message'       => ' Warning 2 of 3: Your instructor has been notified. '
                 . 'Any further violation will immediately terminate your examination.',
         ];
     }
@@ -506,7 +506,7 @@ class ExamSecurityService
                 $service->notifications->notify(
                     $fresh->student,
                     'security_rejected',
-                    'Exam Session Rejected ❌',
+                    'Exam Session Rejected ',
                     'Your exam session was reviewed and rejected due to security violations. '
                         . ($comment ? "Reason: {$comment}" : 'Please contact your instructor for details.'),
                     route('student.exams.show', $fresh->exam_id)
@@ -599,8 +599,8 @@ class ExamSecurityService
         }
 
         $subject = $highPriority
-            ? '🚨 [HIGH PRIORITY] Exam Security Incident — Action Required'
-            : '⚠️ Exam Security Warning — Student Flagged';
+            ? ' [HIGH PRIORITY] Exam Security Incident — Action Required'
+            : ' Exam Security Warning — Student Flagged';
 
         try {
             $bodyHtml = view("emails.security-{$template}", [
@@ -637,8 +637,8 @@ class ExamSecurityService
     ): void {
         $type    = $highPriority ? 'security_incident_high' : 'security_warning';
         $title   = $highPriority
-            ? '🚨 Exam Locked — Security Incident'
-            : '⚠️ Security Warning — Student Flagged';
+            ? 'Exam Locked — Security Incident'
+            : ' Security Warning — Student Flagged';
         $message = $highPriority
             ? "Student {$attempt->student->name} has been terminated after "
                 . self::MAX_VIOLATIONS . " violations on \"{$attempt->exam->title}\"."
@@ -681,7 +681,7 @@ class ExamSecurityService
             'warning_count' => self::MAX_VIOLATIONS,
             'terminated'    => true,
             'locked'        => true,
-            'message'       => '🔒 Your examination has been terminated.',
+            'message'       => ' Your examination has been terminated.',
             'redirect'      => route('student.exams.index'),
         ];
     }

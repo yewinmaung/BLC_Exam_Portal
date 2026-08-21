@@ -52,14 +52,15 @@ class ResultController extends Controller
             ]);
         }
 
-        // ── 2. Load all published results (one query) ─────────────────────
+        // ── 2. Load all results for this student (one query) ───────────────
+        // Show ALL statuses (PASSED, FAILED, DISQUALIFIED, ABSENT).
+        // Security: student_id filter ensures only the logged-in student's results.
         $allResults = Result::with([
                 'exam.course',
                 'exam.questions.answers',
                 'attempt.studentAnswers.answer',
             ])
             ->where('student_id', $student->id)
-            ->where('is_published', true)
             ->whereHas('exam.schedules', fn ($sq) =>
                 $sq->where('ends_at', '<=', now())
             )
